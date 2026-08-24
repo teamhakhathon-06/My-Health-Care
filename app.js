@@ -97,7 +97,7 @@ const BACKBLAZE_B2_CONFIG = Object.freeze({
   enabled: true,
 
   workerUrl:
-    "https://medledger-b2-worker.shaikhrehan.workers.dev",
+    "https://vite-react-template.teamhakhathon.workers.dev",
 
   maxFileSize:
     25 * 1024 * 1024,
