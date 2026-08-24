@@ -885,672 +885,1835 @@ async function testBackblazeWorker() {
 }
 
 
-// =========================================================
-// UPLOAD
-// =========================================================
-
-async function uploadToB2(
-  file,
-  metadata,
-  progressCallback
-) {
-
-  if (!file)
-    throw new Error(
-      "No file selected."
-    );
-
-
-  if (
-    file.size >
-    BACKBLAZE_B2_CONFIG.maxFileSize
-  ) {
-
-    throw new Error(
-      "Maximum file size is 25 MB."
-    );
-  }
-
-
-  const token =
-    await getFirebaseIdToken();
-
-  progressCallback?.(
-    10,
-    "Preparing secure upload..."
-  );
-
-
-  const form =
-    new FormData();
-
-
-  form.append(
-    "file",
-    file,
-    file.name
-  );
-
-
-  form.append(
-    "title",
-    metadata.title || file.name
-  );
-
-
-  form.append(
-    "category",
-    metadata.category || "Other"
-  );
-
-
-  form.append(
-    "recordDate",
-    metadata.recordDate || ""
-  );
-
-
-  form.append(
-    "doctor",
-    metadata.doctor || ""
-  );
-
-
-  progressCallback?.(
-    30,
-    "Uploading to secure storage..."
-  );
-
-
-  const response =
-    await fetch(
-      `${getWorkerURL()}/upload`,
-      {
-
-        method: "POST",
-
-        headers: {
-          Authorization:
-            `Bearer ${token}`
-        },
-
-        body: form
-
-      }
-    );
-
-
-  const text =
-    await response.text();
-
-
-  let result;
-
-  try {
-
-    result =
-      JSON.parse(text);
-
-  } catch {
-
-    throw new Error(
-      "Storage Worker returned invalid data."
-    );
-  }
-
-
-  if (!response.ok) {
-
-    throw new Error(
-      result.error ||
-      `Upload failed (${response.status}).`
-    );
-  }
-
-
-  if (!result.success) {
-
-    throw new Error(
-      result.error ||
-      "B2 upload was not confirmed."
-    );
-  }
-
-
-  progressCallback?.(
-    90,
-    "Upload complete..."
-  );
-
-
-  return {
-
-    fileId:
-      result.file_id ||
-      result.fileId ||
-      "",
-
-    storagePath:
-      result.storage_path ||
-      result.file_path ||
-      result.fileName ||
-      result.file_name ||
-      "",
-
-    originalName:
-      result.file_name ||
-      file.name,
-
-    downloadURL:
-      result.downloadURL ||
-      result.download_url ||
-      ""
-
-  };
-}
-
-
-// =========================================================
-// DOWNLOAD
-// =========================================================
-
-window.downloadDocumentRecord =
-  async function (docId) {
-
-    if (!currentUser)
-      return;
-
-
-    const document =
-      userDocuments.find(
-        doc => doc.id === docId
-      );
-
-
-    if (!document) {
-
-      showToast(
-        "Download Error",
-        "Document not found.",
-        "⚠️"
-      );
-
-      return;
-    }
-
-
-    if (document.downloadURL) {
-
-      window.open(
-        document.downloadURL,
-        "_blank",
-        "noopener,noreferrer"
-      );
-
-      return;
-    }
-
-
-    const storagePath =
-      document.b2StoragePath ||
-      document.b2FileName;
-
-
-    if (!storagePath) {
-
-      showToast(
-        "Download Error",
-        "Secure storage path is missing.",
-        "⚠️"
-      );
-
-      return;
-    }
-
-
-    try {
-
-      showToast(
-        "Preparing Download",
-        "Requesting secure file...",
-        "☁️"
-      );
-
-
-      const token =
-        await getFirebaseIdToken();
-
-
-      const response =
-        await fetch(
-          `${getWorkerURL()}/download?file=${encodeURIComponent(storagePath)}`,
-          {
-
-            headers: {
-
-              Authorization:
-                `Bearer ${token}`
-
-            }
-
-          }
-        );
-
-
-      if (!response.ok) {
-
-        let message =
-          `Download failed (${response.status}).`;
-
-        try {
-
-          const result =
-            await response.json();
-
-          message =
-            result.error ||
-            result.message ||
-            message;
-
-        } catch {}
-
-        throw new Error(message);
-      }
-
-
-      const blob =
-        await response.blob();
-
-
-      if (!blob.size)
-        throw new Error(
-          "Downloaded file is empty."
-        );
-
-
-      const blobURL =
-        URL.createObjectURL(blob);
-
-
-      const link =
-        document.createElement("a");
-
-
-      link.href =
-        blobURL;
-
-
-      link.download =
-        document.originalName ||
-        document.name ||
-        "medical-document";
-
-
-      document.body.appendChild(link);
-
-      link.click();
-
-      link.remove();
-
-
-      setTimeout(
-        () =>
-          URL.revokeObjectURL(blobURL),
-        10000
-      );
-
-
-      showToast(
-        "Download Started",
-        document.name,
-        "✅"
-      );
-
-    } catch (error) {
-
-      console.error(error);
-
-      showToast(
-        "Download Failed",
-        error.message,
-        "⚠️"
-      );
-    }
-  };
-
-  // =========================================================
-// STEP 5 — DOCUMENT VAULT
-// =========================================================
+// ============================================================
+// MEDLEDGER — SECURE DOCUMENT VAULT
+// Production Frontend Storage Layer
+// Cloudflare Worker -> Backblaze B2
+// Firebase Authentication
+// ============================================================
+//
+// Required existing globals/functions:
+//
+// currentUser
+// userDocuments
+// db
+// ref()
+// push()
+// set()
+// getFirebaseIdToken()
+// getWorkerURL()
+// BACKBLAZE_B2_CONFIG
+// formatBytes()
+// getDocumentIcon()
+// renderDocumentsUI()
+// updateCategoryCounts()
+// renderDashboardUI()
+// showToast()
+// $()
+//
+// IMPORTANT:
+// Never place Backblaze application keys in this file.
+// All B2 credentials remain inside the Cloudflare Worker.
+// ============================================================
+
+
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
+const MEDLEDGER_STORAGE_CONFIG = Object.freeze({
+
+    requestTimeoutMs: 120000,
+
+    downloadTimeoutMs: 120000,
+
+    maxFileSize:
+        Number(
+            BACKBLAZE_B2_CONFIG?.maxFileSize
+        ) ||
+        25 * 1024 * 1024,
+
+    allowedTypes:
+        Array.isArray(
+            BACKBLAZE_B2_CONFIG?.allowedTypes
+        )
+            ? BACKBLAZE_B2_CONFIG.allowedTypes
+            : [
+                "application/pdf",
+                "image/jpeg",
+                "image/png"
+            ],
+
+    allowedExtensions:
+        new Set([
+            "pdf",
+            "jpg",
+            "jpeg",
+            "png"
+        ]),
+
+    workerPath: "",
+
+    maxTitleLength: 240,
+
+    maxCategoryLength: 80,
+
+    maxDoctorLength: 240,
+
+    maxRecordDateLength: 40
+
+});
+
+
+// ============================================================
+// STATE
+// ============================================================
 
 let selectedScreenFile = null;
 
+let uploadInProgress = false;
 
-// =========================================================
-// FILE VALIDATION
-// =========================================================
-
-window.handleScreenFileSelected =
-  function (input) {
-
-    const file =
-      input.files?.[0];
-
-    if (!file) return;
+let downloadInProgress = false;
 
 
-    const allowed =
-      BACKBLAZE_B2_CONFIG
-        .allowedTypes
-        .includes(file.type);
+// ============================================================
+// CUSTOM STORAGE ERROR
+// ============================================================
 
+class MedLedgerStorageError extends Error {
 
-    if (!allowed) {
-
-      alert(
-        "Only PDF, JPG and PNG files are allowed."
-      );
-
-      input.value = "";
-
-      return;
-    }
-
-
-    if (
-      file.size >
-      BACKBLAZE_B2_CONFIG.maxFileSize
+    constructor(
+        message,
+        options = {}
     ) {
 
-      alert(
-        "Maximum file size is 25 MB."
-      );
+        super(message);
 
-      input.value = "";
+        this.name =
+            "MedLedgerStorageError";
 
-      return;
+        this.status =
+            options.status || 0;
+
+        this.code =
+            options.code || "";
+
+        this.details =
+            options.details || null;
+
+        this.retryable =
+            Boolean(options.retryable);
+
     }
 
-
-    selectedScreenFile =
-      file;
+}
 
 
-    if ($("screenPickerTitle"))
-      $("screenPickerTitle")
-        .textContent =
-        file.name;
+// ============================================================
+// UTILITY — SAFE TEXT
+// ============================================================
 
+function medLedgerCleanText(
+    value,
+    maxLength
+) {
 
-    if ($("screenPickerSub"))
-      $("screenPickerSub")
-        .textContent =
-        `💾 ${formatBytes(file.size)} · Secure B2 Ready`;
-
-
-    if ($("screenPickerIcon"))
-      $("screenPickerIcon")
-        .textContent =
-        getDocumentIcon(
-          file.type,
-          file.name
+    return String(value ?? "")
+        .replace(
+            /[\u0000-\u001F\u007F]/g,
+            " "
+        )
+        .replace(
+            /\s+/g,
+            " "
+        )
+        .trim()
+        .slice(
+            0,
+            maxLength
         );
 
-
-    const title =
-      $("screenDocTitle");
+}
 
 
-    if (title && !title.value) {
+// ============================================================
+// UTILITY — FILE EXTENSION
+// ============================================================
 
-      title.value =
-        file.name.replace(
-          /\.[^/.]+$/,
-          ""
-        );
+function medLedgerGetExtension(
+    fileName
+) {
+
+    const name =
+        String(fileName || "")
+            .trim()
+            .toLowerCase();
+
+    const index =
+        name.lastIndexOf(".");
+
+    if (
+        index < 0 ||
+        index === name.length - 1
+    ) {
+        return "";
     }
-  };
 
-
-// =========================================================
-// UPLOAD FORM
-// =========================================================
-
-$("screenUploadForm")
-  ?.addEventListener(
-    "submit",
-    async event => {
-
-      event.preventDefault();
-
-
-      if (!currentUser) {
-
-        alert(
-          "Please sign in first."
+    return name
+        .slice(index + 1)
+        .replace(
+            /[^a-z0-9]/g,
+            ""
         );
 
-        return;
-      }
+}
 
 
-      if (!selectedScreenFile) {
+// ============================================================
+// UTILITY — SAFE FILE NAME
+// ============================================================
 
-        alert(
-          "Please select a file."
-        );
+function medLedgerSafeFileName(
+    fileName
+) {
 
-        return;
-      }
+    const fallback =
+        "medical-document";
 
+    let name =
+        String(fileName || "")
+            .trim();
 
-      const title =
-        $("screenDocTitle")
-          ?.value.trim() ||
-        selectedScreenFile.name;
-
-
-      const category =
-        $("screenDocCategory")
-          ?.value ||
-        "Other";
-
-
-      const recordDate =
-        $("screenDocDate")
-          ?.value ||
-        new Date()
-          .toISOString()
-          .split("T")[0];
-
-
-      const doctor =
-        $("screenDocDoctor")
-          ?.value.trim() ||
-        "";
-
-
-      const submitButton =
-        $("screenSubmitBtn");
-
-
-      const progress =
-        $("screenUploadProgress");
-
-
-      const progressFill =
-        $("screenProgressFill");
-
-
-      const progressText =
-        $("screenProgressText");
-
-
-      submitButton?.setAttribute(
-        "disabled",
-        "true"
-      );
-
-
-      progress?.classList.remove(
-        "hidden"
-      );
-
-
-      try {
-
-        const documentId =
-          push(
-            ref(
-              db,
-              `users/${currentUser.uid}/documents`
+    name =
+        name
+            .replace(
+                /[<>:"/\\|?*\u0000-\u001F]/g,
+                "-"
             )
-          ).key;
+            .replace(
+                /\s+/g,
+                "-"
+            )
+            .replace(
+                /-+/g,
+                "-"
+            )
+            .replace(
+                /^\.+/,
+                ""
+            )
+            .slice(
+                0,
+                180
+            );
+
+    return name || fallback;
+
+}
 
 
-        const b2 =
-          await uploadToB2(
-            selectedScreenFile,
+// ============================================================
+// UTILITY — FILE TYPE
+// ============================================================
 
+function medLedgerIsAllowedFile(
+    file
+) {
+
+    if (!(file instanceof File)) {
+        return false;
+    }
+
+    const extension =
+        medLedgerGetExtension(
+            file.name
+        );
+
+    const mime =
+        String(
+            file.type || ""
+        ).toLowerCase();
+
+    const allowedMime =
+        MEDLEDGER_STORAGE_CONFIG
+            .allowedTypes
+            .includes(mime);
+
+    const allowedExtension =
+        MEDLEDGER_STORAGE_CONFIG
+            .allowedExtensions
+            .has(extension);
+
+    return (
+        allowedMime &&
+        allowedExtension
+    );
+
+}
+
+
+// ============================================================
+// UTILITY — FILE SIGNATURE
+// Frontend validation only.
+// Worker remains authoritative.
+// ============================================================
+
+async function medLedgerValidateSignature(
+    file
+) {
+
+    if (!(file instanceof File)) {
+        return false;
+    }
+
+    const extension =
+        medLedgerGetExtension(
+            file.name
+        );
+
+    const bytes =
+        new Uint8Array(
+            await file
+                .slice(0, 16)
+                .arrayBuffer()
+        );
+
+    // PDF
+    if (extension === "pdf") {
+
+        const signature =
+            new TextDecoder()
+                .decode(
+                    bytes.slice(0, 5)
+                );
+
+        return signature === "%PDF-";
+
+    }
+
+    // JPEG
+    if (
+        extension === "jpg" ||
+        extension === "jpeg"
+    ) {
+
+        return (
+            bytes[0] === 0xFF &&
+            bytes[1] === 0xD8 &&
+            bytes[2] === 0xFF
+        );
+
+    }
+
+    // PNG
+    if (extension === "png") {
+
+        const signature = [
+            0x89,
+            0x50,
+            0x4E,
+            0x47,
+            0x0D,
+            0x0A,
+            0x1A,
+            0x0A
+        ];
+
+        return signature.every(
+            (value, index) =>
+                bytes[index] === value
+        );
+
+    }
+
+    return false;
+
+}
+
+
+// ============================================================
+// FILE VALIDATION
+// ============================================================
+
+async function medLedgerValidateFile(
+    file
+) {
+
+    if (!file) {
+
+        throw new MedLedgerStorageError(
+            "Please select a file."
+        );
+
+    }
+
+    if (!(file instanceof File)) {
+
+        throw new MedLedgerStorageError(
+            "Invalid file selected."
+        );
+
+    }
+
+    if (file.size <= 0) {
+
+        throw new MedLedgerStorageError(
+            "The selected file is empty."
+        );
+
+    }
+
+    if (
+        file.size >
+        MEDLEDGER_STORAGE_CONFIG.maxFileSize
+    ) {
+
+        throw new MedLedgerStorageError(
+            "Maximum file size is 25 MB.",
             {
-              title,
-              category,
-              recordDate,
-              doctor
-            },
-
-            (percent, message) => {
-
-              if (progressFill)
-                progressFill.style.width =
-                  `${percent}%`;
-
-              if (progressText)
-                progressText.textContent =
-                  message;
+                status: 413,
+                code: "FILE_TOO_LARGE"
             }
-          );
+        );
+
+    }
+
+    if (
+        !medLedgerIsAllowedFile(file)
+    ) {
+
+        throw new MedLedgerStorageError(
+            "Only PDF, JPG, JPEG and PNG files are allowed.",
+            {
+                status: 400,
+                code: "INVALID_FILE_TYPE"
+            }
+        );
+
+    }
+
+    const validSignature =
+        await medLedgerValidateSignature(
+            file
+        );
+
+    if (!validSignature) {
+
+        throw new MedLedgerStorageError(
+            "The file content does not match its declared type.",
+            {
+                status: 400,
+                code: "INVALID_FILE_SIGNATURE"
+            }
+        );
+
+    }
+
+    return true;
+
+}
 
 
-        if (!b2.storagePath) {
+// ============================================================
+// FETCH WITH TIMEOUT
+// ============================================================
 
-          throw new Error(
-            "B2 did not return a storage path."
-          );
+async function medLedgerFetch(
+    url,
+    options = {},
+    timeoutMs =
+        MEDLEDGER_STORAGE_CONFIG.requestTimeoutMs
+) {
+
+    const controller =
+        new AbortController();
+
+    const timeout =
+        setTimeout(
+            () => controller.abort(),
+            timeoutMs
+        );
+
+    try {
+
+        return await fetch(
+            url,
+            {
+                ...options,
+                signal:
+                    controller.signal
+            }
+        );
+
+    } catch (error) {
+
+        if (
+            error?.name ===
+            "AbortError"
+        ) {
+
+            throw new MedLedgerStorageError(
+                "The storage request timed out. Please try again.",
+                {
+                    code: "REQUEST_TIMEOUT",
+                    retryable: true
+                }
+            );
+
         }
 
+        if (
+            error instanceof TypeError
+        ) {
 
-        const record = {
+            throw new MedLedgerStorageError(
+                "Unable to connect to the secure storage service. Check your internet connection and try again.",
+                {
+                    code: "NETWORK_ERROR",
+                    retryable: true
+                }
+            );
 
-          id: documentId,
+        }
 
-          name: title,
+        throw error;
 
-          originalName:
-            selectedScreenFile.name,
+    } finally {
 
-          type:
-            selectedScreenFile.type,
+        clearTimeout(timeout);
 
-          size:
-            selectedScreenFile.size,
+    }
 
-          formattedSize:
-            formatBytes(
-              selectedScreenFile.size
-            ),
-
-          category,
-
-          recordDate,
-
-          doctor,
-
-          icon:
-            getDocumentIcon(
-              selectedScreenFile.type,
-              selectedScreenFile.name
-            ),
-
-          b2FileId:
-            b2.fileId,
-
-          b2FileName:
-            b2.storagePath,
-
-          b2StoragePath:
-            b2.storagePath,
-
-          storageBackend:
-            "Backblaze B2",
-
-          uploadedAt:
-            Date.now()
-
-        };
+}
 
 
-        await set(
-          ref(
-            db,
-            `users/${currentUser.uid}/documents/${documentId}`
-          ),
-          record
+// ============================================================
+// PARSE WORKER RESPONSE
+// ============================================================
+
+async function medLedgerParseResponse(
+    response
+) {
+
+    const text =
+        await response.text();
+
+    if (!text) {
+
+        return {};
+
+    }
+
+    try {
+
+        return JSON.parse(text);
+
+    } catch {
+
+        throw new MedLedgerStorageError(
+            "Storage Worker returned an invalid response.",
+            {
+                status: response.status,
+                code: "INVALID_WORKER_RESPONSE"
+            }
         );
 
+    }
 
-        userDocuments.unshift(
-          record
+}
+
+
+// ============================================================
+// WORKER ERROR TRANSLATION
+// ============================================================
+
+function medLedgerWorkerError(
+    response,
+    result
+) {
+
+    const status =
+        Number(
+            response?.status || 0
         );
 
+    const workerMessage =
+        result?.error ||
+        result?.message ||
+        "";
 
-        renderDocumentsUI();
+    // Authentication
+    if (status === 401) {
 
-        updateCategoryCounts();
-
-        renderDashboardUI();
-
-
-        showToast(
-          "Document Uploaded",
-          `${title} saved securely.`,
-          "📁"
+        return new MedLedgerStorageError(
+            "Your login session has expired. Please sign in again.",
+            {
+                status,
+                code: "AUTH_REQUIRED"
+            }
         );
 
+    }
 
-        $("screenUploadForm")
-          ?.reset();
+    // Authorization
+    if (status === 403) {
+
+        return new MedLedgerStorageError(
+            workerMessage ||
+            "Secure storage denied this request. Your account may not have permission to access this document.",
+            {
+                status,
+                code: "FORBIDDEN"
+            }
+        );
+
+    }
+
+    // Too large
+    if (status === 413) {
+
+        return new MedLedgerStorageError(
+            workerMessage ||
+            "The selected file is too large. Maximum size is 25 MB.",
+            {
+                status,
+                code: "FILE_TOO_LARGE"
+            }
+        );
+
+    }
+
+    // Rate limit
+    if (status === 429) {
+
+        return new MedLedgerStorageError(
+            "Too many requests. Please wait a moment and try again.",
+            {
+                status,
+                code: "RATE_LIMITED",
+                retryable: true
+            }
+        );
+
+    }
+
+    // Server errors
+    if (status >= 500) {
+
+        return new MedLedgerStorageError(
+            workerMessage ||
+            "Secure storage is temporarily unavailable. Please try again shortly.",
+            {
+                status,
+                code: "SERVER_ERROR",
+                retryable: true
+            }
+        );
+
+    }
+
+    return new MedLedgerStorageError(
+        workerMessage ||
+        `Storage request failed (${status || "unknown"}).`,
+        {
+            status,
+            code: "WORKER_ERROR"
+        }
+    );
+
+}
 
 
-        selectedScreenFile =
-          null;
+// ============================================================
+// FIREBASE TOKEN
+// ============================================================
 
+async function medLedgerGetAuthToken() {
 
-      } catch (error) {
+    if (!currentUser) {
+
+        throw new MedLedgerStorageError(
+            "Please sign in before using the document vault.",
+            {
+                status: 401,
+                code: "AUTH_REQUIRED"
+            }
+        );
+
+    }
+
+    let token;
+
+    try {
+
+        token =
+            await getFirebaseIdToken();
+
+    } catch (error) {
 
         console.error(
-          "Document upload:",
-          error
+            "Firebase token error:",
+            error
         );
 
-
-        showToast(
-          "Upload Failed",
-          error.message,
-          "⚠️"
+        throw new MedLedgerStorageError(
+            "Unable to verify your login session. Please sign in again.",
+            {
+                status: 401,
+                code: "AUTH_TOKEN_ERROR"
+            }
         );
 
-      } finally {
-
-        submitButton?.removeAttribute(
-          "disabled"
-        );
-
-        progress?.classList.add(
-          "hidden"
-        );
-      }
     }
-  );
+
+    if (
+        typeof token !== "string" ||
+        !token.trim()
+    ) {
+
+        throw new MedLedgerStorageError(
+            "Your login session is invalid. Please sign in again.",
+            {
+                status: 401,
+                code: "AUTH_TOKEN_MISSING"
+            }
+        );
+
+    }
+
+    return token.trim();
+
+}
+
+
+// ============================================================
+// WORKER URL
+// ============================================================
+
+function medLedgerWorkerUrl(
+    endpoint
+) {
+
+    const base =
+        String(
+            getWorkerURL() || ""
+        )
+            .trim()
+            .replace(
+                /\/+$/,
+                ""
+            );
+
+    if (!base) {
+
+        throw new MedLedgerStorageError(
+            "Secure storage service URL is not configured.",
+            {
+                code: "WORKER_URL_MISSING"
+            }
+        );
+
+    }
+
+    return `${base}/${String(endpoint).replace(/^\/+/, "")}`;
+
+}
+
+
+// ============================================================
+// UPLOAD
+// ============================================================
+
+async function uploadToB2(
+    file,
+    metadata = {},
+    progressCallback
+) {
+
+    await medLedgerValidateFile(
+        file
+    );
+
+    const token =
+        await medLedgerGetAuthToken();
+
+    progressCallback?.(
+        10,
+        "Preparing secure upload..."
+    );
+
+    // --------------------------------------------------------
+    // IMPORTANT:
+    // Convert all metadata to strings.
+    // --------------------------------------------------------
+
+    const title =
+        medLedgerCleanText(
+            metadata.title ||
+            file.name,
+            MEDLEDGER_STORAGE_CONFIG
+                .maxTitleLength
+        );
+
+    const category =
+        medLedgerCleanText(
+            metadata.category ||
+            "Other",
+            MEDLEDGER_STORAGE_CONFIG
+                .maxCategoryLength
+        ) || "Other";
+
+    const recordDate =
+        medLedgerCleanText(
+            metadata.recordDate ||
+            "",
+            MEDLEDGER_STORAGE_CONFIG
+                .maxRecordDateLength
+        );
+
+    const doctor =
+        medLedgerCleanText(
+            metadata.doctor ||
+            "",
+            MEDLEDGER_STORAGE_CONFIG
+                .maxDoctorLength
+        );
+
+    const form =
+        new FormData();
+
+    form.append(
+        "file",
+        file,
+        medLedgerSafeFileName(
+            file.name
+        )
+    );
+
+    form.append(
+        "title",
+        title
+    );
+
+    form.append(
+        "category",
+        category
+    );
+
+    form.append(
+        "recordDate",
+        recordDate
+    );
+
+    form.append(
+        "doctor",
+        doctor
+    );
+
+    progressCallback?.(
+        30,
+        "Uploading to secure storage..."
+    );
+
+    let response;
+
+    try {
+
+        response =
+            await medLedgerFetch(
+                medLedgerWorkerUrl(
+                    "/upload"
+                ),
+                {
+                    method: "POST",
+
+                    headers: {
+                        Authorization:
+                            `Bearer ${token}`
+                    },
+
+                    body: form
+                },
+
+                MEDLEDGER_STORAGE_CONFIG
+                    .requestTimeoutMs
+            );
+
+    } catch (error) {
+
+        throw error;
+
+    }
+
+    const result =
+        await medLedgerParseResponse(
+            response
+        );
+
+    if (!response.ok) {
+
+        console.error(
+            "MedLedger Worker upload rejected:",
+            {
+                status:
+                    response.status,
+                result
+            }
+        );
+
+        throw medLedgerWorkerError(
+            response,
+            result
+        );
+
+    }
+
+    if (!result?.success) {
+
+        throw new MedLedgerStorageError(
+            result?.error ||
+            "Secure storage did not confirm the upload.",
+            {
+                status:
+                    response.status,
+                code:
+                    "UPLOAD_NOT_CONFIRMED"
+            }
+        );
+
+    }
+
+    const storagePath =
+        result.storage_path ||
+        result.file_path ||
+        result.fileName ||
+        result.file_name ||
+        "";
+
+    if (!storagePath) {
+
+        throw new MedLedgerStorageError(
+            "The storage service completed the upload but did not return a storage path.",
+            {
+                code: "STORAGE_PATH_MISSING"
+            }
+        );
+
+    }
+
+    progressCallback?.(
+        90,
+        "Upload complete. Saving document record..."
+    );
+
+    return {
+
+        fileId:
+            result.file_id ||
+            result.fileId ||
+            storagePath,
+
+        storagePath,
+
+        originalName:
+            result.original_name ||
+            result.file_name ||
+            result.fileName ||
+            file.name,
+
+        downloadURL:
+            result.downloadURL ||
+            result.download_url ||
+            "",
+
+        fileSize:
+            result.file_size ||
+            file.size,
+
+        contentType:
+            result.content_type ||
+            file.type,
+
+        metadata:
+            result.metadata || {
+
+                title,
+                category,
+                recordDate,
+                doctor
+
+            }
+
+    };
+
+}
+
+
+// ============================================================
+// DOWNLOAD
+// ============================================================
+
+window.downloadDocumentRecord =
+    async function (docId) {
+
+        if (
+            downloadInProgress
+        ) {
+
+            showToast?.(
+                "Download In Progress",
+                "Please wait for the current download to finish.",
+                "⏳"
+            );
+
+            return;
+
+        }
+
+        if (!currentUser) {
+
+            showToast?.(
+                "Authentication Required",
+                "Please sign in first.",
+                "🔐"
+            );
+
+            return;
+
+        }
+
+        const documentRecord =
+            userDocuments.find(
+                doc =>
+                    doc.id === docId
+            );
+
+        if (!documentRecord) {
+
+            showToast?.(
+                "Download Error",
+                "Document not found.",
+                "⚠️"
+            );
+
+            return;
+
+        }
+
+        const storagePath =
+            documentRecord.b2StoragePath ||
+            documentRecord.b2FileName ||
+            documentRecord.storagePath;
+
+        if (!storagePath) {
+
+            showToast?.(
+                "Download Error",
+                "Secure storage path is missing.",
+                "⚠️"
+            );
+
+            return;
+
+        }
+
+        downloadInProgress =
+            true;
+
+        try {
+
+            showToast?.(
+                "Preparing Download",
+                "Requesting your secure document...",
+                "☁️"
+            );
+
+            const token =
+                await medLedgerGetAuthToken();
+
+            const downloadUrl =
+                `${medLedgerWorkerUrl("/download")}?file=${encodeURIComponent(storagePath)}`;
+
+            const response =
+                await medLedgerFetch(
+                    downloadUrl,
+                    {
+                        method: "GET",
+
+                        headers: {
+                            Authorization:
+                                `Bearer ${token}`
+                        }
+                    },
+
+                    MEDLEDGER_STORAGE_CONFIG
+                        .downloadTimeoutMs
+                );
+
+            if (!response.ok) {
+
+                let result = {};
+
+                try {
+
+                    result =
+                        await medLedgerParseResponse(
+                            response
+                        );
+
+                } catch {}
+
+                console.error(
+                    "MedLedger Worker download rejected:",
+                    {
+                        status:
+                            response.status,
+                        result
+                    }
+                );
+
+                throw medLedgerWorkerError(
+                    response,
+                    result
+                );
+
+            }
+
+            const blob =
+                await response.blob();
+
+            if (
+                !blob ||
+                !blob.size
+            ) {
+
+                throw new MedLedgerStorageError(
+                    "The downloaded document is empty.",
+                    {
+                        code: "EMPTY_DOWNLOAD"
+                    }
+                );
+
+            }
+
+            const blobUrl =
+                URL.createObjectURL(
+                    blob
+                );
+
+            const link =
+                document.createElement(
+                    "a"
+                );
+
+            link.href =
+                blobUrl;
+
+            link.download =
+                medLedgerSafeFileName(
+                    documentRecord.originalName ||
+                    documentRecord.name ||
+                    "medical-document"
+                );
+
+            link.rel =
+                "noopener";
+
+            document.body.appendChild(
+                link
+            );
+
+            link.click();
+
+            link.remove();
+
+            setTimeout(
+                () => {
+                    URL.revokeObjectURL(
+                        blobUrl
+                    );
+                },
+                10000
+            );
+
+            showToast?.(
+                "Download Started",
+                documentRecord.name ||
+                documentRecord.originalName ||
+                "Medical document",
+                "✅"
+            );
+
+        } catch (error) {
+
+            console.error(
+                "MedLedger document download failed:",
+                error
+            );
+
+            showToast?.(
+                "Download Failed",
+                error?.message ||
+                "Unable to download the document.",
+                "⚠️"
+            );
+
+        } finally {
+
+            downloadInProgress =
+                false;
+
+        }
+
+    };
+
+
+// ============================================================
+// STEP 5 — DOCUMENT VAULT
+// ============================================================
+
+
+// ============================================================
+// FILE VALIDATION / PICKER
+// ============================================================
+
+window.handleScreenFileSelected =
+    async function (input) {
+
+        // Reset old state first.
+        selectedScreenFile =
+            null;
+
+        if (!input) {
+            return;
+        }
+
+        const file =
+            input.files?.[0];
+
+        if (!file) {
+            return;
+        }
+
+        try {
+
+            await medLedgerValidateFile(
+                file
+            );
+
+            selectedScreenFile =
+                file;
+
+            if ($("screenPickerTitle")) {
+
+                $("screenPickerTitle")
+                    .textContent =
+                    file.name;
+
+            }
+
+            if ($("screenPickerSub")) {
+
+                $("screenPickerSub")
+                    .textContent =
+                    `💾 ${formatBytes(file.size)} · Secure B2 Ready`;
+
+            }
+
+            if ($("screenPickerIcon")) {
+
+                $("screenPickerIcon")
+                    .textContent =
+                    getDocumentIcon(
+                        file.type,
+                        file.name
+                    );
+
+            }
+
+            const titleInput =
+                $("screenDocTitle");
+
+            if (
+                titleInput &&
+                !titleInput.value.trim()
+            ) {
+
+                const baseName =
+                    file.name.replace(
+                        /\.[^/.]+$/,
+                        ""
+                    );
+
+                titleInput.value =
+                    medLedgerCleanText(
+                        baseName,
+                        MEDLEDGER_STORAGE_CONFIG
+                            .maxTitleLength
+                    );
+
+            }
+
+        } catch (error) {
+
+            console.error(
+                "File validation failed:",
+                error
+            );
+
+            input.value =
+                "";
+
+            selectedScreenFile =
+                null;
+
+            if ($("screenPickerTitle")) {
+
+                $("screenPickerTitle")
+                    .textContent =
+                    "Choose a medical document";
+
+            }
+
+            if ($("screenPickerSub")) {
+
+                $("screenPickerSub")
+                    .textContent =
+                    "PDF, JPG or PNG · Maximum 25 MB";
+
+            }
+
+            showToast?.(
+                "Invalid File",
+                error?.message ||
+                "The selected file is not supported.",
+                "⚠️"
+            );
+
+        }
+
+    };
+
+
+// ============================================================
+// RESET FILE PICKER UI
+// ============================================================
+
+function resetMedLedgerUploadUI() {
+
+    selectedScreenFile =
+        null;
+
+    const form =
+        $("screenUploadForm");
+
+    form?.reset();
+
+    if ($("screenPickerTitle")) {
+
+        $("screenPickerTitle")
+            .textContent =
+            "Choose a medical document";
+
+    }
+
+    if ($("screenPickerSub")) {
+
+        $("screenPickerSub")
+            .textContent =
+            "PDF, JPG or PNG · Maximum 25 MB";
+
+    }
+
+    if ($("screenPickerIcon")) {
+
+        $("screenPickerIcon")
+            .textContent =
+            "📄";
+
+    }
+
+    if ($("screenProgressFill")) {
+
+        $("screenProgressFill")
+            .style.width =
+            "0%";
+
+    }
+
+    if ($("screenProgressText")) {
+
+        $("screenProgressText")
+            .textContent =
+            "";
+
+    }
+
+}
+
+
+// ============================================================
+// UPLOAD FORM
+// ============================================================
+
+$("screenUploadForm")
+    ?.addEventListener(
+        "submit",
+        async event => {
+
+            event.preventDefault();
+
+            if (
+                uploadInProgress
+            ) {
+
+                showToast?.(
+                    "Upload In Progress",
+                    "Please wait for the current upload to finish.",
+                    "⏳"
+                );
+
+                return;
+
+            }
+
+            if (!currentUser) {
+
+                showToast?.(
+                    "Authentication Required",
+                    "Please sign in before uploading a medical document.",
+                    "🔐"
+                );
+
+                return;
+
+            }
+
+            if (!selectedScreenFile) {
+
+                showToast?.(
+                    "No File Selected",
+                    "Please select a PDF, JPG or PNG file.",
+                    "📄"
+                );
+
+                return;
+
+            }
+
+            const submitButton =
+                $("screenSubmitBtn");
+
+            const progress =
+                $("screenUploadProgress");
+
+            const progressFill =
+                $("screenProgressFill");
+
+            const progressText =
+                $("screenProgressText");
+
+            // --------------------------------------------------
+            // Read metadata as STRINGS.
+            // --------------------------------------------------
+
+            const title =
+                medLedgerCleanText(
+                    $("screenDocTitle")
+                        ?.value ||
+                    selectedScreenFile.name,
+                    MEDLEDGER_STORAGE_CONFIG
+                        .maxTitleLength
+                ) ||
+                selectedScreenFile.name;
+
+            const category =
+                medLedgerCleanText(
+                    $("screenDocCategory")
+                        ?.value ||
+                    "Other",
+                    MEDLEDGER_STORAGE_CONFIG
+                        .maxCategoryLength
+                ) ||
+                "Other";
+
+            const recordDate =
+                medLedgerCleanText(
+                    $("screenDocDate")
+                        ?.value ||
+                    new Date()
+                        .toISOString()
+                        .slice(0, 10),
+                    MEDLEDGER_STORAGE_CONFIG
+                        .maxRecordDateLength
+                );
+
+            const doctor =
+                medLedgerCleanText(
+                    $("screenDocDoctor")
+                        ?.value ||
+                    "",
+                    MEDLEDGER_STORAGE_CONFIG
+                        .maxDoctorLength
+                );
+
+            uploadInProgress =
+                true;
+
+            submitButton?.setAttribute(
+                "disabled",
+                "true"
+            );
+
+            if (submitButton) {
+
+                submitButton.dataset
+                    .originalText =
+                    submitButton.textContent;
+
+                submitButton.textContent =
+                    "Uploading...";
+
+            }
+
+            progress?.classList.remove(
+                "hidden"
+            );
+
+            if (progressFill) {
+
+                progressFill.style.width =
+                    "5%";
+
+            }
+
+            if (progressText) {
+
+                progressText.textContent =
+                    "Validating document...";
+
+            }
+
+            let documentId =
+                null;
+
+            let b2 =
+                null;
+
+            try {
+
+                // ------------------------------------------------
+                // Revalidate immediately before upload.
+                // Prevents stale/changed file state.
+                // ------------------------------------------------
+
+                await medLedgerValidateFile(
+                    selectedScreenFile
+                );
+
+                // ------------------------------------------------
+                // Create Firebase record ID.
+                // ------------------------------------------------
+
+                const documentsRef =
+                    ref(
+                        db,
+                        `users/${currentUser.uid}/documents`
+                    );
+
+                documentId =
+                    push(
+                        documentsRef
+                    ).key;
+
+                if (!documentId) {
+
+                    throw new Error(
+                        "Unable to create document record."
+                    );
+
+                }
+
+                // ------------------------------------------------
+                // Upload to Cloudflare Worker / B2.
+                // ------------------------------------------------
+
+                b2 =
+                    await uploadToB2(
+                        selectedScreenFile,
+                        {
+                            title,
+                            category,
+                            recordDate,
+                            doctor
+                        },
+                        (
+                            percent,
+                            message
+                        ) => {
+
+                            if (
+                                progressFill
+                            ) {
+
+                                progressFill
+                                    .style
+                                    .width =
+                                    `${percent}%`;
+
+                            }
+
+                            if (
+                                progressText
+                            ) {
+
+                                progressText
+                                    .textContent =
+                                    message;
+
+                            }
+
+                        }
+                    );
+
+                if (
+                    !b2 ||
+                    !b2.storagePath
+                ) {
+
+                    throw new MedLedgerStorageError(
+                        "Secure storage did not return a valid storage path.",
+                        {
+                            code:
+                                "STORAGE_PATH_MISSING"
+                        }
+                    );
+
+                }
+
+                if (
+                    progressFill
+                ) {
+
+                    progressFill.style.width =
+                        "95%";
+
+                }
+
+                if (
+                    progressText
+                ) {
+
+                    progressText.textContent =
+                        "Saving document record...";
+
+                }
+
+                // ------------------------------------------------
+                // Create local/Firebase document record.
+                // ------------------------------------------------
+
+                const record = {
+
+                    id:
+                        documentId,
+
+                    name:
+                        title,
+
+                    originalName:
+                        selectedScreenFile.name,
+
+                    type:
+                        selectedScreenFile.type,
+
+                    size:
+                        selectedScreenFile.size,
+
+                    formattedSize:
+                        formatBytes(
+                            selectedScreenFile.size
+                        ),
+
+                    category,
+
+                    recordDate,
+
+                    doctor,
+
+                    icon:
+                        getDocumentIcon(
+                            selectedScreenFile.type,
+                            selectedScreenFile.name
+                        ),
+
+                    b2FileId:
+                        b2.fileId,
+
+                    b2FileName:
+                        b2.storagePath,
+
+                    b2StoragePath:
+                        b2.storagePath,
+
+                    storageBackend:
+                        "Backblaze B2 via MedLedger Worker",
+
+                    uploadedAt:
+                        Date.now()
+
+                };
+
+                // ------------------------------------------------
+                // Save metadata to Firebase.
+                // ------------------------------------------------
+
+                await set(
+                    ref(
+                        db,
+                        `users/${currentUser.uid}/documents/${documentId}`
+                    ),
+                    record
+                );
+
+                // ------------------------------------------------
+                // Update application state.
+                // ------------------------------------------------
+
+                userDocuments.unshift(
+                    record
+                );
+
+                renderDocumentsUI();
+
+                updateCategoryCounts();
+
+                renderDashboardUI();
+
+                if (
+                    progressFill
+                ) {
+
+                    progressFill.style.width =
+                        "100%";
+
+                }
+
+                if (
+                    progressText
+                ) {
+
+                    progressText.textContent =
+                        "Document securely saved.";
+
+                }
+
+                showToast?.(
+                    "Document Uploaded",
+                    `${title} was saved securely.`,
+                    "📁"
+                );
+
+                // ------------------------------------------------
+                // Reset UI only after complete success.
+                // ------------------------------------------------
+
+                resetMedLedgerUploadUI();
+
+            } catch (error) {
+
+                console.error(
+                    "MedLedger document upload failed:",
+                    error
+                );
+
+                // ------------------------------------------------
+                // IMPORTANT:
+                //
+                // If B2 succeeded but Firebase failed,
+                // the B2 object can become orphaned.
+                //
+                // We intentionally do NOT attempt an automatic
+                // delete here unless your Worker exposes a
+                // guaranteed authenticated delete endpoint.
+                //
+                // Your Worker does expose /delete, so this can
+                // be added later as a transactional cleanup.
+                // ------------------------------------------------
+
+                let message =
+                    error?.message ||
+                    "Unable to upload the document.";
+
+                if (
+                    error?.status === 403
+                ) {
+
+                    message =
+                        `${message} If this is unexpected, check the Cloudflare Worker authentication and Backblaze permissions.`;
+
+                }
+
+                showToast?.(
+                    "Upload Failed",
+                    message,
+                    "⚠️"
+                );
+
+            } finally {
+
+                uploadInProgress =
+                    false;
+
+                submitButton?.removeAttribute(
+                    "disabled"
+                );
+
+                if (submitButton) {
+
+                    submitButton.textContent =
+                        submitButton.dataset
+                            .originalText ||
+                        "Upload";
+
+                    delete submitButton
+                        .dataset
+                        .originalText;
+
+                }
+
+                // Don't hide immediately if you want the user
+                // to see "100% / saved" after success.
+                setTimeout(
+                    () => {
+
+                        progress?.classList.add(
+                            "hidden"
+                        );
+
+                    },
+                    1200
+                );
+
+            }
+
+        }
+    );
+
+
+// ============================================================
+// OPTIONAL — CLEANUP WHEN USER LEAVES PAGE
+// ============================================================
+
+window.addEventListener(
+    "beforeunload",
+    () => {
+
+        selectedScreenFile =
+            null;
+
+    }
+);
 
 
 // =========================================================
