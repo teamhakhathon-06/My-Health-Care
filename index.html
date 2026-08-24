@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#087f5b">
+  <meta name="description" content="MedLedger — Digital Medical Records, Backblaze B2 Free Cloud, AI Health Status & Medicine Alarms">
+  <title>MedLedger — Smart Health Records</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+
+  <!-- =========================================================
+       MedLedger Vault Mobile Safety Overrides
+       Kept inline so the existing style.css remains untouched.
+  ========================================================== -->
+  <style id="medledger-vault-mobile-fix">
+    html, body {
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
+    .app,
+    .main-content,
+    .section,
+    .card,
+    .documents-grid,
+    .doc-card {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    .documents-grid {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    }
+
+    .doc-card {
+      width: 100%;
+      overflow: hidden;
+    }
+
+    .doc-header,
+    .doc-meta-strip,
+    .doc-actions {
+      min-width: 0;
+    }
+
+    .doc-header {
+      gap: 8px;
+    }
+
+    .doc-header .category-tag {
+      max-width: 65%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .doc-name,
+    .doc-doctor,
+    .doc-meta-strip span {
+      min-width: 0;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .doc-meta-strip {
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+
+    .doc-actions {
+      flex-wrap: wrap;
+    }
+
+    .doc-actions > a,
+    .doc-actions > button {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .vault-controls,
+    .search-box,
+    .category-filters {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .category-filters {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .secure-upload-note {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid #cfe8dc;
+      border-radius: 10px;
+      background: #f3fbf7;
+      color: #145c43;
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 600px) {
+      .documents-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
+      }
+
+      .doc-card {
+        padding: 12px;
+      }
+
+      .doc-meta-strip {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .doc-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+
+      .doc-actions a,
+      .doc-actions button {
+        width: 100%;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .main-content {
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+      }
+
+      .doc-actions {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .doc-header .category-tag {
+        max-width: 58%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- =========================================================
+       1. AUTHENTICATION SCREEN (Firebase Auth)
+  ========================================================= -->
+  <div id="authContainer" class="auth-container">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="brand-badge">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
+            <path d="M12 5v14"/>
+            <path d="M5 12h14"/>
+          </svg>
+        </div>
+        <div>
+          <h1>MedLedger</h1>
+          <p>Your Medical Health Vault. 100% Free.</p>
+        </div>
+      </div>
+
+      <div class="auth-tabs">
+        <button type="button" id="tabLoginBtn" class="auth-tab-btn active">Sign In</button>
+        <button type="button" id="tabRegisterBtn" class="auth-tab-btn">Create Account</button>
+      </div>
+
+      <!-- Sign In Form -->
+      <form id="loginForm" class="auth-form">
+        <div class="input-group">
+          <label for="loginEmail">Email Address</label>
+          <div class="input-wrapper">
+            <span class="input-icon">✉️</span>
+            <input type="email" id="loginEmail" placeholder="name@example.com" autocomplete="username" required>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="loginPassword">Password</label>
+          <div class="input-wrapper">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password" required>
+          </div>
+        </div>
+
+        <div id="loginError" class="auth-error"></div>
+
+        <button type="submit" id="loginSubmitBtn" class="btn btn-primary btn-block">
+          <span>Sign In to MedLedger</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+
+        <div class="auth-separator">
+          <span>or continue with</span>
+        </div>
+
+        <button type="button" id="googleSignInBtn" class="btn btn-secondary btn-block btn-google">
+          <svg width="18" height="18" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          <span>Continue with Google</span>
+        </button>
+
+        <div class="auth-badge">
+          <span>🔒 Protected by Firebase Authentication</span>
+        </div>
+      </form>
+
+      <!-- Register Form -->
+      <form id="registerForm" class="auth-form hidden">
+        <div class="input-group">
+          <label for="regName">Patient Full Name</label>
+          <div class="input-wrapper">
+            <span class="input-icon">👤</span>
+            <input type="text" id="regName" placeholder="e.g. Rehan Shaikh" autocomplete="name" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="input-group">
+            <label for="regBlood">Blood Group</label>
+            <div class="input-wrapper select-wrapper">
+              <span class="input-icon">🩸</span>
+              <select id="regBlood">
+                <option value="O+">O+</option>
+                <option value="O-">O-</option>
+                <option value="A+">A+</option>
+                <option value="A-">A-</option>
+                <option value="B+">B+</option>
+                <option value="B-">B-</option>
+                <option value="AB+">AB+</option>
+                <option value="AB-">AB-</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label for="regAge">Age</label>
+            <div class="input-wrapper">
+              <span class="input-icon">🎂</span>
+              <input type="number" id="regAge" min="1" max="120" placeholder="e.g. 24" required>
+            </div>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="regEmail">Email Address</label>
+          <div class="input-wrapper">
+            <span class="input-icon">✉️</span>
+            <input type="email" id="regEmail" placeholder="name@example.com" autocomplete="username" required>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="regPassword">Create Password</label>
+          <div class="input-wrapper">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="regPassword" placeholder="Minimum 6 characters" autocomplete="new-password" minlength="6" required>
+          </div>
+        </div>
+
+        <div id="regError" class="auth-error"></div>
+
+        <button type="submit" id="regSubmitBtn" class="btn btn-primary btn-block">
+          <span>Create Free Health Vault</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+
+        <div class="auth-badge">
+          <span>🛡️ Your name, blood group & medical reports are private</span>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       2. MAIN APP SHELL
+  ========================================================= -->
+  <div class="app hidden">
+
+    <!-- Mobile Sidebar Drawer Overlay -->
+    <div id="sidebarDrawerOverlay" class="sidebar-drawer-overlay hidden" onclick="closeMobileSidebar()"></div>
+
+    <!-- Mobile Top Navigation Header -->
+    <header class="mobile-header">
+      <div class="mobile-header-left">
+        <!-- Hamburger Menu Button for Mobile Sidebar -->
+        <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" title="Open Navigation Menu">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+
+        <div class="mobile-brand" onclick="openSection('dashboard')">
+          <div class="brand-icon"><span>+</span></div>
+          <div class="brand-text">
+            <strong id="mobileBrandPatientName">MedLedger</strong>
+            <span id="mobileBrandBlood">Blood: O+</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mobile-header-actions">
+        <button type="button" class="header-icon-btn" id="headerNotifBtn" title="Medicine Alarms" onclick="openSection('tracker')">
+          <span class="icon">⏰</span>
+          <span class="notif-dot hidden" id="mobileNotifDot"></span>
+        </button>
+
+        <button type="button" class="profile-pill-btn" onclick="openSection('profile')" title="My Profile">
+          <div class="mobile-avatar">U</div>
+          <span class="mobile-name" id="mobileHeaderName">Patient</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Sidebar (Desktop & Mobile Drawer) -->
+    <aside class="sidebar" id="appSidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-brand-row">
+          <div class="sidebar-brand">
+            <div class="brand-icon"><span>+</span></div>
+            <div>
+              <div class="brand-name">MedLedger</div>
+              <div class="brand-tag">Smart Health Vault</div>
+            </div>
+          </div>
+          <!-- Close button for Mobile Sidebar Drawer -->
+          <button type="button" class="sidebar-close-btn" onclick="closeMobileSidebar()" title="Close Menu">✕</button>
+        </div>
+
+        <div class="patient-card-mini" onclick="openSection('profile'); closeMobileSidebar();">
+          <div class="avatar" id="sidebarAvatar">U</div>
+          <div class="patient-info">
+            <strong class="who" id="sidebarName">Patient Name</strong>
+            <span class="id" id="sidebarBlood">Blood: O+</span>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section-title">CLINICAL SUITE</div>
+
+          <button class="nav-item active" data-target="dashboard">
+            <span class="nav-icon">📊</span>
+            <span>Dashboard</span>
+          </button>
+
+          <button class="nav-item" data-target="vault">
+            <span class="nav-icon">📁</span>
+            <span>Documents Vault</span>
+            <span class="nav-badge" id="navDocCount">0</span>
+          </button>
+
+          <button class="nav-item" data-target="uploadScreen">
+            <span class="nav-icon">＋</span>
+            <span>Upload New Report</span>
+          </button>
+
+          <button class="nav-item" data-target="scanner">
+            <span class="nav-icon ai-nav-icon">✦</span>
+            <span>AI Health Status</span>
+            <span class="nav-tag-ai">Smart</span>
+          </button>
+
+          <button class="nav-item" data-target="tracker">
+            <span class="nav-icon">⏰</span>
+            <span>Medicine Alarms</span>
+            <span class="nav-badge orange" id="navMedCount">0</span>
+          </button>
+
+          <div class="nav-section-title">SETTINGS & PRIVACY</div>
+
+          <button class="nav-item" data-target="profile">
+            <span class="nav-icon">👤</span>
+            <span>Patient Profile</span>
+          </button>
+        </nav>
+      </div>
+
+      <div class="sidebar-bottom">
+        <div class="privacy-lock-card">
+          <div class="lock-icon">☁️</div>
+          <div class="lock-text">
+            <strong>Backblaze B2 Vault</strong>
+            <p>10GB Free Storage Active · Bucket: <code>myhealthcare</code></p>
+          </div>
+        </div>
+
+        <button type="button" id="logoutBtn" class="sidebar-logout-btn">
+          <span>Sign Out</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+
+      <!-- =======================================================
+           SECTION 1: DASHBOARD
+      ======================================================== -->
+      <section class="section active" id="dashboard">
+        
+        <!-- Welcome Hero -->
+        <div class="hero-card">
+          <div class="hero-content">
+            <div class="hero-badge">
+              <span>🟢 PATIENT VAULT ACTIVE</span>
+            </div>
+            <h1>Good day, <span id="dashboardName">Patient</span> 👋</h1>
+            <p>Store your prescriptions, blood tests, X-rays, and medical images securely in Backblaze B2 free cloud and set active medicine alarms.</p>
+            
+            <div class="hero-actions">
+              <button type="button" class="btn btn-emerald" onclick="openSection('uploadScreen')">
+                <span>＋ Upload Medical Report</span>
+              </button>
+              <button type="button" class="btn btn-glass" onclick="openSection('tracker')">
+                <span>⏰ View Medicine Alarms</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="hero-patient-chip">
+            <div class="avatar" id="heroAvatar">U</div>
+            <div>
+              <div class="who" id="heroName">Patient Name</div>
+              <div class="id" id="heroBlood">Blood Group: O+</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Summary Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card" onclick="openSection('vault')">
+            <div class="stat-icon-wrap emerald"><span>📄</span></div>
+            <div class="stat-meta">
+              <span class="stat-label">Total Reports</span>
+              <strong class="stat-value" id="statDocCount">0</strong>
+              <span class="stat-sub" id="statLastDoc">No uploads yet</span>
+            </div>
+          </div>
+
+          <div class="stat-card" onclick="openSection('tracker')">
+            <div class="stat-icon-wrap orange"><span>⏰</span></div>
+            <div class="stat-meta">
+              <span class="stat-label">Active Alarms</span>
+              <strong class="stat-value" id="statMedCount">0</strong>
+              <span class="stat-sub" id="statNextMed">No alarms set</span>
+            </div>
+          </div>
+
+          <div class="stat-card" onclick="openSection('scanner')">
+            <div class="stat-icon-wrap purple"><span>✦</span></div>
+            <div class="stat-meta">
+              <span class="stat-label">AI Health Status</span>
+              <strong class="stat-value" id="statAiStatus">Ready</strong>
+              <span class="stat-sub">Clinical Evaluation</span>
+            </div>
+          </div>
+
+          <div class="stat-card" onclick="openSection('profile')">
+            <div class="stat-icon-wrap blue"><span>👤</span></div>
+            <div class="stat-meta">
+              <span class="stat-label">Patient Profile</span>
+              <strong class="stat-value" id="statPatientName">Patient</strong>
+              <span class="stat-sub" id="statPatientBlood">Blood: O+</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions Row -->
+        <div class="quick-action-strip">
+          <button type="button" class="action-tile" onclick="openSection('uploadScreen')">
+            <div class="tile-icon-box bg-emerald"><span>↑</span></div>
+            <div class="tile-details">
+              <strong>Upload Medical File</strong>
+              <span>PDF, JPG, PNG medical reports</span>
+            </div>
+            <span class="tile-arrow">›</span>
+          </button>
+
+          <button type="button" class="action-tile" onclick="openSection('scanner')">
+            <div class="tile-icon-box bg-purple"><span>✦</span></div>
+            <div class="tile-details">
+              <strong>AI Health Status</strong>
+              <span>Scans reports & extracts clinical overview</span>
+            </div>
+            <span class="tile-arrow">›</span>
+          </button>
+
+          <button type="button" class="action-tile" onclick="openSection('tracker')">
+            <div class="tile-icon-box bg-orange"><span>⏰</span></div>
+            <div class="tile-details">
+              <strong>Medicine Alarm Clock</strong>
+              <span>Auditory alarms for doctor scheduled times</span>
+            </div>
+            <span class="tile-arrow">›</span>
+          </button>
+        </div>
+
+        <!-- Dashboard Two-Column Content -->
+        <div class="dashboard-grid">
+          
+          <!-- Recent Documents Card -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h2>Recently Added Reports</h2>
+                <p class="card-sub">Latest medical files in your Backblaze B2 vault</p>
+              </div>
+              <button type="button" class="btn-link" onclick="openSection('vault')">View Vault →</button>
+            </div>
+
+            <div id="recentActivity" class="recent-documents-list">
+              <div class="empty-state">
+                <div class="empty-icon">📁</div>
+                <strong>Your vault is currently empty</strong>
+                <p>Upload prescriptions, blood test results, or scans to keep your health record organized.</p>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openSection('uploadScreen')">Upload First Report</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Today's Medicine Card -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h2>Today's Medicine Schedule</h2>
+                <p class="card-sub">Auditory alarms according to doctor instructions</p>
+              </div>
+              <button type="button" class="btn-link" onclick="openSection('tracker')">Manage →</button>
+            </div>
+
+            <div id="dashboardMedList" class="dashboard-med-list">
+              <div class="empty-state">
+                <div class="empty-icon">💊</div>
+                <strong>No medicines scheduled</strong>
+                <p>Add tablets, syrups, or injections with specific reminder timings.</p>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openSection('tracker')">Set Alarms</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- =======================================================
+           SECTION 2: DOCUMENTS VAULT (Folders & Files Flow)
+      ======================================================== -->
+      <section class="section" id="vault">
+        
+        <div class="section-title-row">
+          <div>
+            <span class="eyebrow">DIGITAL MEDICAL VAULT</span>
+            <h1>My Documents</h1>
+            <p>Browse by medical folder or view all organized reports (PDF & Images only).</p>
+          </div>
+          <button type="button" class="btn btn-primary" onclick="openSection('uploadScreen')">
+            <span>＋ Upload Document</span>
+          </button>
+        </div>
+
+        <!-- Free Storage Banner -->
+        <div class="free-storage-strip">
+          <span class="badge-icon">☁️</span>
+          <div class="storage-text-wrap">
+            <strong>Backblaze B2 Free Cloud Active (Bucket: myhealthcare)</strong>
+            <p>10GB Free Storage · Total Vault Size: <span id="vaultStorageUsed">0 KB</span></p>
+          </div>
+        </div>
+
+        <!-- Folders View Grid -->
+        <div class="folders-grid" id="vaultFoldersGrid">
+          <div class="folder-card" onclick="selectFolderCategory('Prescription')">
+            <div class="folder-icon bg-blue-light">💊</div>
+            <div class="folder-info">
+              <strong>Prescriptions</strong>
+              <span id="folderCountPrescription">0 files</span>
+            </div>
+          </div>
+
+          <div class="folder-card" onclick="selectFolderCategory('Blood Test')">
+            <div class="folder-icon bg-red-light">🩸</div>
+            <div class="folder-info">
+              <strong>Blood Tests</strong>
+              <span id="folderCountBloodTest">0 files</span>
+            </div>
+          </div>
+
+          <div class="folder-card" onclick="selectFolderCategory('Scan')">
+            <div class="folder-icon bg-purple-light">🩻</div>
+            <div class="folder-info">
+              <strong>Scans & Imaging</strong>
+              <span id="folderCountScan">0 files</span>
+            </div>
+          </div>
+
+          <div class="folder-card" onclick="selectFolderCategory('Surgery')">
+            <div class="folder-icon bg-orange-light">🧾</div>
+            <div class="folder-info">
+              <strong>Surgery Reports</strong>
+              <span id="folderCountSurgery">0 files</span>
+            </div>
+          </div>
+
+          <div class="folder-card" onclick="selectFolderCategory('Vaccination')">
+            <div class="folder-icon bg-green-light">💉</div>
+            <div class="folder-info">
+              <strong>Vaccinations</strong>
+              <span id="folderCountVaccination">0 files</span>
+            </div>
+          </div>
+
+          <div class="folder-card" onclick="selectFolderCategory('Other')">
+            <div class="folder-icon bg-gray-light">📄</div>
+            <div class="folder-info">
+              <strong>Other Records</strong>
+              <span id="folderCountOther">0 files</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search & Filter Controls -->
+        <div class="vault-controls">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="docSearchInput" placeholder="Search by report name, doctor, or test..." oninput="filterDocuments()">
+          </div>
+
+          <div class="category-filters" id="categoryFilterBar">
+            <button type="button" class="filter-pill active" data-cat="all" onclick="setCategoryFilter('all')">All (<span id="count-all">0</span>)</button>
+            <button type="button" class="filter-pill" data-cat="Prescription" onclick="setCategoryFilter('Prescription')">💊 Prescriptions</button>
+            <button type="button" class="filter-pill" data-cat="Blood Test" onclick="setCategoryFilter('Blood Test')">🩸 Blood Tests</button>
+            <button type="button" class="filter-pill" data-cat="Scan" onclick="setCategoryFilter('Scan')">🩻 Scans & Imaging</button>
+            <button type="button" class="filter-pill" data-cat="Surgery" onclick="setCategoryFilter('Surgery')">🧾 Surgery</button>
+            <button type="button" class="filter-pill" data-cat="Vaccination" onclick="setCategoryFilter('Vaccination')">💉 Vaccination</button>
+            <button type="button" class="filter-pill" data-cat="Other" onclick="setCategoryFilter('Other')">📄 Other</button>
+          </div>
+        </div>
+
+        <!-- Documents Grid -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 id="vaultSectionHeading">Stored Records</h2>
+              <p class="card-sub" id="vaultSubtitle">Showing medical reports sorted by latest upload</p>
+            </div>
+            <span class="badge-pill" id="vaultTotalBadge">0 Records</span>
+          </div>
+
+          <div id="vaultGrid" class="documents-grid">
+            <div class="empty-state">
+              <div class="empty-icon">🗂️</div>
+              <strong>No medical reports in this view</strong>
+              <p>Upload prescriptions, blood tests, or scans (PDF/Images) to view them here.</p>
+              <button type="button" class="btn btn-primary btn-sm" onclick="openSection('uploadScreen')">＋ Upload Document</button>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- =======================================================
+           SECTION 3: DEDICATED UPLOAD FLOW (Screen-to-Screen Flow)
+      ======================================================== -->
+      <section class="section" id="uploadScreen">
+        
+        <div class="section-title-row">
+          <div>
+            <button type="button" class="btn-back-link" onclick="openSection('vault')">
+              <span>← Back to Documents</span>
+            </button>
+            <h1 style="margin-top: 8px;">Upload Medical Report</h1>
+            <p>Upload PDF or Image medical files to your free Backblaze B2 bucket (<code>myhealthcare</code>).</p>
+            <div class="secure-upload-note" role="status">
+              🔐 <strong>Secure cloud upload:</strong> MedLedger sends the file through an authenticated storage gateway; your Backblaze application key is never placed in this page.
+            </div>
+          </div>
+        </div>
+
+        <div class="card upload-screen-card">
+          <form id="screenUploadForm">
+            
+            <!-- File Picker Dropzone Box -->
+            <div class="modal-file-picker" id="screenFileDropzone" onclick="document.getElementById('screenFileInput').click()">
+              <input type="file" id="screenFileInput" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" hidden onchange="handleScreenFileSelected(this)">
+              <div class="picker-inner">
+                <span class="picker-icon" id="screenPickerIcon">📄</span>
+                <div id="screenPickerTextWrap">
+                  <strong id="screenPickerTitle">Tap to select medical file or photo</strong>
+                  <p id="screenPickerSub">Accepts PDF, JPG, PNG (Max 25 MB)</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <!-- Category Selector -->
+              <div class="input-group">
+                <label for="screenDocCategory">Document Category *</label>
+                <div class="input-wrapper select-wrapper">
+                  <span class="input-icon">🏷️</span>
+                  <select id="screenDocCategory" required>
+                    <option value="Blood Test">🩸 Blood Test / Lab Report</option>
+                    <option value="Prescription">💊 Prescription / Rx</option>
+                    <option value="Scan">🩻 Imaging (X-Ray, MRI, CT, Scan)</option>
+                    <option value="Surgery">🧾 Surgery / Discharge Summary</option>
+                    <option value="Vaccination">💉 Vaccination Certificate</option>
+                    <option value="Checkup">🩺 General Checkup</option>
+                    <option value="Other">📄 Other Medical Record</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Document Date -->
+              <div class="input-group">
+                <label for="screenDocDate">Date of Report / Visit *</label>
+                <div class="input-wrapper">
+                  <span class="input-icon">📅</span>
+                  <input type="date" id="screenDocDate" required>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <!-- Document Title / Name -->
+              <div class="input-group">
+                <label for="screenDocTitle">Report Title (e.g. CBC Blood Panel)</label>
+                <div class="input-wrapper">
+                  <span class="input-icon">📝</span>
+                  <input type="text" id="screenDocTitle" placeholder="e.g. Complete Blood Count (CBC)">
+                </div>
+              </div>
+
+              <!-- Doctor or Hospital Name -->
+              <div class="input-group">
+                <label for="screenDocDoctor">Doctor / Hospital (Optional)</label>
+                <div class="input-wrapper">
+                  <span class="input-icon">🏥</span>
+                  <input type="text" id="screenDocDoctor" placeholder="e.g. Dr. Rehan · Apollo Clinic">
+                </div>
+              </div>
+            </div>
+
+            <!-- Upload Progress Bar -->
+            <div id="screenUploadProgress" class="upload-progress-box hidden">
+              <div class="progress-bar-wrap">
+                <div class="progress-bar-fill" id="screenProgressFill"></div>
+              </div>
+              <span id="screenProgressText">Uploading to Backblaze B2 Vault...</span>
+            </div>
+
+            <div class="form-actions-flow">
+              <button type="button" class="btn btn-secondary" onclick="openSection('vault')">
+                Cancel
+              </button>
+              <button type="submit" id="screenSubmitBtn" class="btn btn-primary">
+                <span>Upload to Backblaze B2</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
+
+          </form>
+        </div>
+
+      </section>
+
+      <!-- =======================================================
+           SECTION 4: AI DOCUMENT OVERVIEW (AI Health Status)
+      ======================================================== -->
+      <section class="section" id="scanner">
+        
+        <div class="section-title-row">
+          <div>
+            <span class="eyebrow">CLINICAL AI INTELLIGENCE</span>
+            <h1>AI Health Status & Report Analysis</h1>
+            <p>MedLedger AI scans your uploaded medical documents (PDFs & Images) to synthesize your current health status, active treatments, and precautions.</p>
+          </div>
+          <button type="button" class="btn btn-purple" id="btnTriggerAiScan" onclick="runAiAnalysis()">
+            <span>✦ Scan & Analyze Health Status</span>
+          </button>
+        </div>
+
+        <!-- Privacy Banner -->
+        <div class="ai-banner">
+          <div class="ai-banner-icon">🔒</div>
+          <div>
+            <strong>100% Patient-Isolated AI Analysis</strong>
+            <p>The AI only scans documents uploaded under your account. It does not replace a doctor, but summarizes your medical parameters in plain language.</p>
+          </div>
+        </div>
+
+        <!-- AI Engine Container -->
+        <div class="ai-engine-card">
+          <div class="ai-engine-header">
+            <div class="ai-pulse-icon">✦</div>
+            <div>
+              <span class="ai-label">MEDLEDGER AI MEDICAL SCANNER</span>
+              <h2>Current Patient Health Status</h2>
+            </div>
+          </div>
+
+          <div id="aiAnalysisOutput" class="ai-output-box">
+            <div class="ai-empty-state">
+              <div class="ai-spark-icon">✨</div>
+              <h3>Ready to Scan Your Medical Documents</h3>
+              <p>Upload prescriptions, blood panels, or scan reports (PDF/JPG/PNG). MedLedger AI will read the text, extract key health markers, and evaluate your health status.</p>
+              <button type="button" class="btn btn-purple" onclick="runAiAnalysis()">
+                <span>✦ Scan Reports & Evaluate Health Status</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="medical-disclaimer-box">
+            <div class="disclaimer-icon">⚠️</div>
+            <div>
+              <strong>Important Medical Notice</strong>
+              <p>MedLedger AI summarizes document text for patient literacy and organization. It does not provide medical diagnoses, treatment plans, or emergency recommendations. Always consult a qualified medical doctor.</p>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- =======================================================
+           SECTION 5: MEDICINES & ALARM TRACKER
+      ======================================================== -->
+      <section class="section" id="tracker">
+        
+        <div class="section-title-row">
+          <div>
+            <span class="eyebrow">DAILY HEALTH REGIMEN</span>
+            <h1>Medicine Alarm Clock</h1>
+            <p>Never miss a dose. Set doctor timing instructions and scheduled times to hear an audible alarm when it's time to take your tablets.</p>
+          </div>
+          <button type="button" class="btn btn-primary" onclick="focusMedicineForm()">
+            <span>＋ Add Medicine Alarm</span>
+          </button>
+        </div>
+
+        <!-- Today's Schedule Card -->
+        <div class="card medicine-schedule-card">
+          <div class="card-header">
+            <div class="today-title-wrap">
+              <span class="icon">⏰</span>
+              <div>
+                <h2>Today's Timed Alarms</h2>
+                <p class="card-sub">Ringing alarms trigger at the exact scheduled minute</p>
+              </div>
+            </div>
+            <div class="notification-status-chip granted" id="notifStatusChip" onclick="testMedicineAlarm()">
+              <span class="notif-indicator"></span>
+              <span id="notifStatusText">🔔 Test Alarm Sound</span>
+            </div>
+          </div>
+
+          <div id="trackList" class="medicine-schedule-list">
+            <div class="empty-state">
+              <div class="empty-icon">💊</div>
+              <strong>No medicines scheduled</strong>
+              <p>Fill out the form below with your tablet name, dosage, and alarm time.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add Medicine Form Card -->
+        <div class="card medicine-form-card" id="medicineFormContainer">
+          <div class="card-header">
+            <div>
+              <h2>Set Medicine Alarm</h2>
+              <p class="card-sub">Doctor timing instructions & alarm time</p>
+            </div>
+            <span class="badge-pill bg-green-light">⏰ Auditory Alarm</span>
+          </div>
+
+          <form id="medicineForm" class="med-form-grid">
+            <div class="input-group span-2">
+              <label for="medicineName">Medicine / Tablet Name *</label>
+              <div class="input-wrapper">
+                <span class="input-icon">💊</span>
+                <input type="text" id="medicineName" placeholder="e.g. Metformin 500mg, Amoxicillin, Vitamin D3" required>
+              </div>
+            </div>
+
+            <div class="input-group">
+              <label for="medicineInstruction">Doctor's Timing Instruction *</label>
+              <div class="input-wrapper select-wrapper">
+                <span class="input-icon">🍽️</span>
+                <select id="medicineInstruction" required>
+                  <option value="Before breakfast">Before breakfast (Morning)</option>
+                  <option value="After breakfast">After breakfast (Morning)</option>
+                  <option value="Before lunch">Before lunch (Afternoon)</option>
+                  <option value="After lunch">After lunch (Afternoon)</option>
+                  <option value="Evening snack">Evening snack</option>
+                  <option value="Before dinner">Before dinner (Night)</option>
+                  <option value="After dinner">After dinner (Night)</option>
+                  <option value="Before bedtime">Before bedtime</option>
+                  <option value="As needed (SOS)">As needed (SOS / When required)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="input-group">
+              <label for="medicineTime">Alarm Time (Exact Minute) *</label>
+              <div class="input-wrapper">
+                <span class="input-icon">⏰</span>
+                <input type="time" id="medicineTime" required>
+              </div>
+            </div>
+
+            <div class="input-group span-2">
+              <label for="medicineDosage">Dosage / Doctor Notes (Optional)</label>
+              <div class="input-wrapper">
+                <span class="input-icon">📝</span>
+                <input type="text" id="medicineDosage" placeholder="e.g. 1 tablet with warm water, Dr. Kulkarni">
+              </div>
+            </div>
+
+            <div class="form-actions span-2">
+              <button type="submit" class="btn btn-primary btn-block">
+                <span>Save Medicine & Activate Alarm</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
+          </form>
+        </div>
+
+      </section>
+
+      <!-- =======================================================
+           SECTION 6: PROFILE & PRIVACY
+      ======================================================== -->
+      <section class="section" id="profile">
+        
+        <div class="section-title-row">
+          <div>
+            <span class="eyebrow">PATIENT PROFILE</span>
+            <h1>Patient Details</h1>
+            <p>Your registered medical identity, blood group, age, and Backblaze B2 storage configuration.</p>
+          </div>
+        </div>
+
+        <div class="profile-card-large">
+          <div class="profile-avatar-large" id="profileAvatarLarge">U</div>
+          <div class="profile-details-large">
+            <span class="profile-tag">REGISTERED PATIENT</span>
+            <h2 id="profileNameLarge">Patient Name</h2>
+            <div class="profile-meta-grid">
+              <div>
+                <span class="meta-label">PATIENT FULL NAME</span>
+                <strong id="profileDisplayName">Patient Name</strong>
+              </div>
+              <div>
+                <span class="meta-label">BLOOD GROUP</span>
+                <strong id="profileBlood">O+</strong>
+              </div>
+              <div>
+                <span class="meta-label">AGE</span>
+                <strong id="profileAge">— yrs</strong>
+              </div>
+              <div>
+                <span class="meta-label">REGISTERED EMAIL</span>
+                <strong id="profileEmail">—</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Backblaze B2 & Storage Info -->
+        <div class="security-features-grid">
+          <div class="security-card">
+            <div class="sec-icon">☁️</div>
+            <h3>Backblaze B2 Free Cloud</h3>
+            <p>Bucket: <code>myhealthcare</code> (Endpoint: <code>s3.eu-central-003.backblazeb2.com</code>). 10GB free tier active without requiring a credit card or Blaze upgrade.</p>
+          </div>
+
+          <div class="security-card">
+            <div class="sec-icon">📍</div>
+            <h3>Where is Data Stored in Firebase?</h3>
+            <p>Your <strong>Email</strong> is verified in Firebase Auth, while your <strong>Name, Age, and Blood Group</strong> are saved in Firebase Realtime Database at <code>/users/{UID}/profile</code>.</p>
+          </div>
+
+          <div class="security-card">
+            <div class="sec-icon">⏰</div>
+            <h3>Auditory Medicine Alarms</h3>
+            <p>Alarms generate synthesized ringing audio directly in your browser tab when scheduled time hits.</p>
+          </div>
+        </div>
+
+        <div class="profile-actions-bar">
+          <button type="button" id="profileLogoutBtn" class="btn btn-danger">
+            <span>Sign Out of MedLedger</span>
+          </button>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- Mobile Bottom Navigation Bar -->
+    <nav class="bottom-nav">
+      <button type="button" class="bottom-nav-item active" data-target="dashboard">
+        <span class="icon">🏠</span>
+        <small>Home</small>
+      </button>
+
+      <button type="button" class="bottom-nav-item" data-target="vault">
+        <span class="icon">📁</span>
+        <small>Documents</small>
+      </button>
+
+      <button type="button" class="bottom-nav-item bottom-ai-item" data-target="uploadScreen">
+        <div class="bottom-ai-bubble">
+          <span>＋</span>
+        </div>
+        <small>Upload</small>
+      </button>
+
+      <button type="button" class="bottom-nav-item" data-target="tracker">
+        <span class="icon">⏰</span>
+        <small>Alarms</small>
+      </button>
+
+      <button type="button" class="bottom-nav-item" data-target="profile">
+        <span class="icon">👤</span>
+        <small>Profile</small>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- =========================================================
+       4. FULLSCREEN / POPUP MEDICINE ALARM MODAL (AUDITORY ALARM)
+  ========================================================= -->
+  <div id="medicineAlarmModal" class="modal-overlay hidden" style="z-index: 200;">
+    <div class="modal-card alarm-modal-card">
+      <div class="alarm-pulse-ring">
+        <span class="alarm-clock-icon">⏰</span>
+      </div>
+      <div class="alarm-modal-body">
+        <span class="alarm-modal-badge">MEDICINE TIME ALARM</span>
+        <h2 id="alarmMedName">Medicine Name</h2>
+        <p class="alarm-instruction" id="alarmMedInstruction">Take 1 tablet after breakfast</p>
+        <div class="alarm-time-display" id="alarmMedTime">08:00 AM</div>
+      </div>
+      <div class="alarm-modal-actions">
+        <button type="button" class="btn btn-primary btn-block alarm-btn-take" onclick="stopMedicineAlarm(true)">
+          <span>✓ Taken — Stop Alarm</span>
+        </button>
+        <button type="button" class="btn btn-secondary btn-block" onclick="stopMedicineAlarm(false)">
+          <span>Snooze (5 min)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- In-App Toast Notification -->
+  <div id="toastNotification" class="toast-notification hidden">
+    <div class="toast-icon" id="toastIcon">🔔</div>
+    <div class="toast-content">
+      <strong id="toastTitle">Notification</strong>
+      <p id="toastBody">Message</p>
+    </div>
+    <button type="button" class="toast-close" onclick="hideToast()">✕</button>
+  </div>
+
+  <!-- Application Javascript (ES Module) -->
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
