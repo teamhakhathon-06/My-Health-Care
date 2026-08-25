@@ -179,6 +179,124 @@ async function handleSignOut(){
 $("logoutBtn")?.addEventListener("click",handleSignOut);
 $("profileLogoutBtn")?.addEventListener("click",handleSignOut);
 
+/* =========================================================
+   MEDVAULT — DARK / LIGHT MODE
+   ========================================================= */
+
+(function initializeTheme() {
+
+  const savedTheme = localStorage.getItem("medvault-theme");
+
+  /*
+   * If the user has previously selected dark mode,
+   * restore it immediately.
+   */
+  if (savedTheme === "dark") {
+    document.documentElement.classList.add("dark-mode");
+  }
+
+})();
+
+
+function updateThemeUI() {
+
+  const isDark = document.documentElement.classList.contains("dark-mode");
+
+  const headerButton = document.getElementById("themeToggleBtn");
+  const headerIcon = document.getElementById("themeToggleIcon");
+
+  const sidebarIcon = document.getElementById("sidebarThemeIcon");
+  const sidebarText = document.getElementById("sidebarThemeText");
+
+  if (isDark) {
+
+    if (headerIcon) {
+      headerIcon.textContent = "☀️";
+    }
+
+    if (headerButton) {
+      headerButton.title = "Switch to light mode";
+      headerButton.setAttribute(
+        "aria-label",
+        "Switch to light mode"
+      );
+    }
+
+    if (sidebarIcon) {
+      sidebarIcon.textContent = "☀️";
+    }
+
+    if (sidebarText) {
+      sidebarText.textContent = "Light Mode";
+    }
+
+  } else {
+
+    if (headerIcon) {
+      headerIcon.textContent = "🌙";
+    }
+
+    if (headerButton) {
+      headerButton.title = "Switch to dark mode";
+      headerButton.setAttribute(
+        "aria-label",
+        "Switch to dark mode"
+      );
+    }
+
+    if (sidebarIcon) {
+      sidebarIcon.textContent = "🌙";
+    }
+
+    if (sidebarText) {
+      sidebarText.textContent = "Dark Mode";
+    }
+
+  }
+}
+
+
+function toggleMedVaultTheme() {
+
+  const html = document.documentElement;
+
+  const isDark = html.classList.toggle("dark-mode");
+
+  localStorage.setItem(
+    "medvault-theme",
+    isDark ? "dark" : "light"
+  );
+
+  updateThemeUI();
+}
+
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  const headerThemeButton =
+    document.getElementById("themeToggleBtn");
+
+  const sidebarThemeButton =
+    document.getElementById("sidebarThemeToggle");
+
+  if (headerThemeButton) {
+    headerThemeButton.addEventListener(
+      "click",
+      toggleMedVaultTheme
+    );
+  }
+
+  if (sidebarThemeButton) {
+    sidebarThemeButton.addEventListener(
+      "click",
+      toggleMedVaultTheme
+    );
+  }
+
+  updateThemeUI();
+
+});
+
 /* ========================= PROFILE ========================= */
 
 async function loadProfile(user){
