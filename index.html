@@ -14,6 +14,16 @@
 
   <link rel="stylesheet" href="style.css">
 
+  <script>
+  (function () {
+    const theme = localStorage.getItem("medvault-theme");
+
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark-mode");
+    }
+  })();
+</script>
+
   <!-- =========================================================
        MedLedger Vault Mobile Safety Overrides
        Kept inline so the existing style.css remains untouched.
@@ -354,8 +364,24 @@
           </div>
         </div>
 
+        
         <nav class="sidebar-nav">
           <div class="nav-section-title">CLINICAL SUITE</div>
+
+          <button
+  type="button"
+  id="sidebarThemeToggle"
+  class="sidebar-theme-toggle"
+>
+  <span class="theme-toggle-left">
+    <span id="sidebarThemeIcon">🌙</span>
+    <span id="sidebarThemeText">Dark Mode</span>
+  </span>
+
+  <span class="theme-switch-indicator">
+    <span></span>
+  </span>
+</button>
 
           <button class="nav-item active" data-target="dashboard">
             <span class="nav-icon">📊</span>
@@ -428,6 +454,9 @@
               <button type="button" class="btn btn-emerald" onclick="openSection('uploadScreen')">
                 <span>＋ Upload Medical Report</span>
               </button>
+              <button type="button" id="themeToggleBtn" class="theme-toggle-btn" title="Switch to dark mode" aria-label="Switch to dark mode">
+  <span id="themeToggleIcon">🌙</span>
+</button>
               <button type="button" class="btn btn-glass" onclick="openSection('tracker')">
                 <span>⏰ View Medicine Alarms</span>
               </button>
