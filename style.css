@@ -4025,6 +4025,326 @@ body,
   display: none;
 }
 
+/* =========================================================
+   MEDVAULT — PWA UI
+   ========================================================= */
+
+/* ---------------------------------------------------------
+   INSTALL BUTTON
+--------------------------------------------------------- */
+
+.medvault-install-btn {
+  position: fixed;
+
+  right: 20px;
+  bottom: 20px;
+
+  z-index: 9999;
+
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  padding: 12px 18px;
+
+  border: 1px solid var(--primary-border);
+
+  border-radius: 999px;
+
+  background: var(--surface);
+
+  color: var(--text-main);
+
+  box-shadow:
+    0 12px 35px rgba(0, 0, 0, 0.18);
+
+  font-weight: 700;
+  font-size: 0.85rem;
+
+  opacity: 0;
+
+  transform:
+    translateY(20px)
+    scale(0.96);
+
+  pointer-events: none;
+
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease,
+    background 0.25s ease;
+}
+
+.medvault-install-btn.visible {
+  opacity: 1;
+
+  transform:
+    translateY(0)
+    scale(1);
+
+  pointer-events: auto;
+}
+
+.medvault-install-btn:hover {
+  transform:
+    translateY(-2px)
+    scale(1.01);
+
+  border-color: var(--primary);
+}
+
+.medvault-install-btn span:first-child {
+  font-size: 1.1rem;
+}
+
+
+/* ---------------------------------------------------------
+   UPDATE BANNER
+--------------------------------------------------------- */
+
+.medvault-update-banner {
+
+  position: fixed;
+
+  left: 50%;
+  bottom: 22px;
+
+  transform: translateX(-50%);
+
+  z-index: 10000;
+
+  width: min(
+    calc(100% - 30px),
+    460px
+  );
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  gap: 18px;
+
+  padding: 14px 16px;
+
+  border:
+    1px solid var(--primary-border);
+
+  border-radius:
+    var(--radius-md);
+
+  background:
+    var(--surface);
+
+  color:
+    var(--text-main);
+
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.22);
+
+  animation:
+    medvaultBannerIn
+    0.35s
+    var(--ease)
+    both;
+}
+
+.medvault-update-banner div {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 2px;
+
+  min-width: 0;
+}
+
+.medvault-update-banner strong {
+  font-size: 0.9rem;
+}
+
+.medvault-update-banner span {
+  color: var(--text-secondary);
+
+  font-size: 0.76rem;
+}
+
+.medvault-update-banner button {
+
+  flex-shrink: 0;
+
+  padding:
+    9px 14px;
+
+  border-radius:
+    var(--radius-sm);
+
+  background:
+    var(--primary);
+
+  color:
+    var(--text-inverse);
+
+  font-weight:
+    800;
+
+  transition:
+    var(--transition-fast);
+}
+
+.medvault-update-banner button:hover {
+  background:
+    var(--primary-hover);
+
+  transform:
+    translateY(-1px);
+}
+
+
+/* ---------------------------------------------------------
+   OFFLINE STATUS
+--------------------------------------------------------- */
+
+html.medvault-offline::before {
+
+  content:
+    "Offline mode — MedVault app shell available";
+
+  position: fixed;
+
+  top: 0;
+  left: 0;
+
+  z-index: 10001;
+
+  width: 100%;
+
+  padding:
+    7px 12px;
+
+  background:
+    var(--orange);
+
+  color:
+    #000;
+
+  text-align:
+    center;
+
+  font-size:
+    0.72rem;
+
+  font-weight:
+    800;
+
+  letter-spacing:
+    0.01em;
+}
+
+
+/* ---------------------------------------------------------
+   DARK MODE PWA INSTALL BUTTON
+--------------------------------------------------------- */
+
+html.dark-mode .medvault-install-btn,
+html.dark-mode .medvault-update-banner {
+
+  background:
+    #0B141C;
+
+  border-color:
+    rgba(140, 200, 210, .14);
+
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, .5);
+}
+
+
+/* ---------------------------------------------------------
+   MOBILE
+--------------------------------------------------------- */
+
+@media (max-width: 600px) {
+
+  .medvault-install-btn {
+
+    right: 12px;
+    bottom: 76px;
+
+    left: 12px;
+
+    width:
+      calc(100% - 24px);
+
+    justify-content:
+      center;
+  }
+
+  .medvault-update-banner {
+
+    bottom: 72px;
+
+    align-items:
+      stretch;
+
+    flex-direction:
+      column;
+
+    gap: 12px;
+  }
+
+  .medvault-update-banner button {
+
+    width: 100%;
+  }
+
+}
+
+
+/* ---------------------------------------------------------
+   REDUCED MOTION
+--------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+
+  .medvault-install-btn,
+  .medvault-update-banner {
+
+    animation: none;
+
+    transition: none;
+  }
+
+}
+
+
+/* ---------------------------------------------------------
+   ANIMATION
+--------------------------------------------------------- */
+
+@keyframes medvaultBannerIn {
+
+  from {
+
+    opacity: 0;
+
+    transform:
+      translateX(-50%)
+      translateY(15px);
+  }
+
+  to {
+
+    opacity: 1;
+
+    transform:
+      translateX(-50%)
+      translateY(0);
+  }
+
+}
+
 /* ================================================================
    RESPONSIVE BREAKPOINTS
    ================================================================ */
