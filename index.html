@@ -371,12 +371,6 @@
             <span>Upload New Report</span>
           </button>
 
-          <button class="nav-item" data-target="scanner">
-            <span class="nav-icon ai-nav-icon">✦</span>
-            <span>AI Health Status</span>
-            <span class="nav-tag-ai">Smart</span>
-          </button>
-
           <button class="nav-item" data-target="tracker">
             <span class="nav-icon">⏰</span>
             <span>Medicine Alarms</span>
@@ -464,15 +458,6 @@
             </div>
           </div>
 
-          <div class="stat-card" onclick="openSection('scanner')">
-            <div class="stat-icon-wrap purple"><span>✦</span></div>
-            <div class="stat-meta">
-              <span class="stat-label">AI Health Status</span>
-              <strong class="stat-value" id="statAiStatus">Ready</strong>
-              <span class="stat-sub">Clinical Evaluation</span>
-            </div>
-          </div>
-
           <div class="stat-card" onclick="openSection('profile')">
             <div class="stat-icon-wrap blue"><span>👤</span></div>
             <div class="stat-meta">
@@ -490,15 +475,6 @@
             <div class="tile-details">
               <strong>Upload Medical File</strong>
               <span>PDF, JPG, PNG medical reports</span>
-            </div>
-            <span class="tile-arrow">›</span>
-          </button>
-
-          <button type="button" class="action-tile" onclick="openSection('scanner')">
-            <div class="tile-icon-box bg-purple"><span>✦</span></div>
-            <div class="tile-details">
-              <strong>AI Health Status</strong>
-              <span>Scans reports & extracts clinical overview</span>
             </div>
             <span class="tile-arrow">›</span>
           </button>
@@ -783,60 +759,6 @@
       <!-- =======================================================
            SECTION 4: AI DOCUMENT OVERVIEW (AI Health Status)
       ======================================================== -->
-      <section class="section" id="scanner">
-        
-        <div class="section-title-row">
-          <div>
-            <span class="eyebrow">CLINICAL AI INTELLIGENCE</span>
-            <h1>AI Health Status & Report Analysis</h1>
-            <p>MedLedger AI scans your uploaded medical documents (PDFs & Images) to synthesize your current health status, active treatments, and precautions.</p>
-          </div>
-          <button type="button" class="btn btn-purple" id="btnTriggerAiScan" onclick="runAiAnalysis()">
-            <span>✦ Scan & Analyze Health Status</span>
-          </button>
-        </div>
-
-        <!-- Privacy Banner -->
-        <div class="ai-banner">
-          <div class="ai-banner-icon">🔒</div>
-          <div>
-            <strong>100% Patient-Isolated AI Analysis</strong>
-            <p>The AI only scans documents uploaded under your account. It does not replace a doctor, but summarizes your medical parameters in plain language.</p>
-          </div>
-        </div>
-
-        <!-- AI Engine Container -->
-        <div class="ai-engine-card">
-          <div class="ai-engine-header">
-            <div class="ai-pulse-icon">✦</div>
-            <div>
-              <span class="ai-label">MEDLEDGER AI MEDICAL SCANNER</span>
-              <h2>Current Patient Health Status</h2>
-            </div>
-          </div>
-
-          <div id="aiAnalysisOutput" class="ai-output-box">
-            <div class="ai-empty-state">
-              <div class="ai-spark-icon">✨</div>
-              <h3>Ready to Scan Your Medical Documents</h3>
-              <p>Upload prescriptions, blood panels, or scan reports (PDF/JPG/PNG). MedLedger AI will read the text, extract key health markers, and evaluate your health status.</p>
-              <button type="button" class="btn btn-purple" onclick="runAiAnalysis()">
-                <span>✦ Scan Reports & Evaluate Health Status</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="medical-disclaimer-box">
-            <div class="disclaimer-icon">⚠️</div>
-            <div>
-              <strong>Important Medical Notice</strong>
-              <p>MedLedger AI summarizes document text for patient literacy and organization. It does not provide medical diagnoses, treatment plans, or emergency recommendations. Always consult a qualified medical doctor.</p>
-            </div>
-          </div>
-        </div>
-
-      </section>
-
       <!-- =======================================================
            SECTION 5: MEDICINES & ALARM TRACKER
       ======================================================== -->
