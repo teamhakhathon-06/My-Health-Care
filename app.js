@@ -554,7 +554,7 @@ $("medicineForm")?.addEventListener("submit",async e=>{
   const name=$("medicineName")?.value.trim(),instruction=$("medicineInstruction")?.value||"",
     dosage=$("medicineDosage")?.value.trim()||"",time=$("medicineTime")?.value;
   if(!name||!time){alert("Enter medicine name and time.");return;}
-  const medicine={id:crypto.randomUUID(),owner_id:currentUser.id,name,instruction,dosage,time,enabled:true,taken_today_date:null};
+  const medicine={id:crypto.randomUUID(),owner_id:currentUser.id,name,instruction,dosage,time,enabled:true,taken_today_date:""};
   const {data,error}=await supabase.from("medicines").insert(medicine).select().single();
   if(error){showToast("Medicine Error",errorMessage(error),"⚠️");return;}
   userMedicines.push(normalizeMedicine(data));userMedicines.sort((a,b)=>a.time.localeCompare(b.time));
