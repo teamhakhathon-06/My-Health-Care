@@ -1440,258 +1440,352 @@ async function testBackblazeWorker() {
   }
 
 
-  // ==========================================================
-  // UPLOAD
-  // ==========================================================
+  // ============================================================
+// MEDLEDGER SECURE UPLOAD
+// ============================================================
 
-  async function uploadToB2(
+async function uploadToB2(
     file,
     metadata = {},
     progressCallback
-  ) {
+) {
 
-    validateSelectedFile(file);
+    if (!currentUser) {
 
-
-    if (uploadInProgress) {
-      throw createStorageError(
-        "Another document upload is already in progress.",
-        {
-          code: "UPLOAD_IN_PROGRESS"
-        }
-      );
+        throw new Error(
+            "Please sign in before uploading a document."
+        );
     }
 
 
-    uploadInProgress = true;
+    if (!file) {
+
+        throw new Error(
+            "No file selected."
+        );
+    }
+
+
+    const maxFileSize =
+        Number(
+            BACKBLAZE_B2_CONFIG?.maxFileSize
+        ) ||
+        25 * 1024 * 1024;
+
+
+    if (file.size <= 0) {
+
+        throw new Error(
+            "The selected file is empty."
+        );
+    }
+
+
+    if (file.size > maxFileSize) {
+
+        throw new Error(
+            "Maximum file size is 25 MB."
+        );
+    }
+
+
+    progressCallback?.(
+        5,
+        "Authenticating securely..."
+    );
+
+
+    // Force-refresh when possible so an expired
+    // Firebase token is not sent to the Worker.
+
+    let token;
+
+    try {
+
+        token =
+            await currentUser.getIdToken(
+                true
+            );
+
+    } catch (error) {
+
+        console.error(
+            "Firebase token error:",
+            error
+        );
+
+        throw new Error(
+            "Your login session could not be verified. Please sign in again."
+        );
+    }
+
+
+    if (!token) {
+
+        throw new Error(
+            "Firebase authentication token is missing."
+        );
+    }
+
+
+    progressCallback?.(
+        15,
+        "Preparing secure upload..."
+    );
+
+
+    const form =
+        new FormData();
+
+
+    form.append(
+        "file",
+        file,
+        file.name
+    );
+
+
+    form.append(
+        "title",
+        String(
+            metadata.title ||
+            file.name
+        ).trim()
+    );
+
+
+    form.append(
+        "category",
+        String(
+            metadata.category ||
+            "Other"
+        ).trim()
+    );
+
+
+    form.append(
+        "recordDate",
+        String(
+            metadata.recordDate ||
+            ""
+        ).trim()
+    );
+
+
+    form.append(
+        "doctor",
+        String(
+            metadata.doctor ||
+            ""
+        ).trim()
+    );
+
+
+    progressCallback?.(
+        25,
+        "Connecting to secure storage..."
+    );
+
+
+    const workerURL =
+        String(
+            getWorkerURL()
+        )
+        .replace(
+            /\/+$/,
+            ""
+        );
+
+
+    if (!workerURL) {
+
+        throw new Error(
+            "Secure storage Worker URL is not configured."
+        );
+    }
+
+
+    const endpoint =
+        `${workerURL}/upload`;
+
+
+    let response;
 
 
     try {
 
-      progressCallback?.(
-        5,
-        "Verifying secure session..."
-      );
+        response =
+            await fetch(
+                endpoint,
+                {
+                    method:
+                        "POST",
 
+                    headers: {
 
-      const token =
-        await getSecureFirebaseToken();
+                        Authorization:
+                            `Bearer ${token}`
+                    },
 
+                    body:
+                        form
+                }
+            );
 
-      progressCallback?.(
-        12,
-        "Preparing secure upload..."
-      );
-
-
-      const form =
-        new FormData();
-
-
-      // ------------------------------------------------------
-      // Normalize metadata.
-      // ------------------------------------------------------
-
-      const title =
-        String(
-          metadata?.title ?? file.name
-        )
-          .trim()
-          .slice(0, 240);
-
-
-      const category =
-        String(
-          metadata?.category ?? "Other"
-        )
-          .trim()
-          .slice(0, 80) ||
-        "Other";
-
-
-      const recordDate =
-        String(
-          metadata?.recordDate ?? ""
-        )
-          .trim()
-          .slice(0, 40);
-
-
-      const doctor =
-        String(
-          metadata?.doctor ?? ""
-        )
-          .trim()
-          .slice(0, 240);
-
-
-      // ------------------------------------------------------
-      // FormData
-      // ------------------------------------------------------
-
-      form.append(
-        "file",
-        file,
-        file.name
-      );
-
-
-      form.append(
-        "title",
-        title || file.name
-      );
-
-
-      form.append(
-        "category",
-        category
-      );
-
-
-      form.append(
-        "recordDate",
-        recordDate
-      );
-
-
-      form.append(
-        "doctor",
-        doctor
-      );
-
-
-      progressCallback?.(
-        25,
-        "Uploading encrypted connection to secure storage..."
-      );
-
-
-      const {
-        result
-      } = await medLedgerFetch(
-        "upload",
-        {
-          method: "POST",
-          token,
-          body: form,
-          timeoutMs: 180000
-        }
-      );
-
-
-      // ------------------------------------------------------
-      // Validate server response.
-      // ------------------------------------------------------
-
-      if (!result?.success) {
-
-        throw createStorageError(
-          result?.error ||
-          "Secure storage did not confirm the upload.",
-          {
-            code:
-              result?.code ||
-              "UPLOAD_NOT_CONFIRMED",
-            details:
-              result
-          }
-        );
-      }
-
-
-      const storagePath =
-        String(
-          result?.storage_path ||
-          result?.file_id ||
-          result?.file_path ||
-          ""
-        ).trim();
-
-
-      if (!storagePath) {
+    } catch (error) {
 
         console.error(
-          "Worker returned successful upload without storage path:",
-          result
+            "MedLedger Worker network error:",
+            error
         );
 
-        throw createStorageError(
-          "The document was uploaded, but secure storage did not return a storage path.",
-          {
-            code: "MISSING_STORAGE_PATH"
-          }
+        throw new Error(
+            "Unable to connect to secure storage."
         );
-      }
+    }
 
 
-      progressCallback?.(
-        85,
-        "Verifying uploaded document..."
-      );
+    progressCallback?.(
+        80,
+        "Verifying secure upload..."
+    );
 
 
-      const originalName =
-        String(
-          result?.original_name ||
-          result?.file_name ||
-          file.name
+    const responseText =
+        await response.text();
+
+
+    let result = null;
+
+
+    try {
+
+        result =
+            responseText
+                ? JSON.parse(
+                    responseText
+                )
+                : null;
+
+    } catch {
+
+        console.error(
+            "Invalid Worker response:",
+            responseText
+        );
+
+        throw new Error(
+            "Secure storage returned an invalid response."
+        );
+    }
+
+
+    if (!response.ok) {
+
+        console.error(
+            "MedLedger Worker upload rejected:",
+            {
+                endpoint,
+                status:
+                    response.status,
+                result
+            }
         );
 
 
-      progressCallback?.(
-        100,
-        "Upload complete."
-      );
+        if (
+            response.status === 401
+        ) {
+
+            throw new Error(
+                "Your login session has expired. Please sign in again."
+            );
+        }
 
 
-      return {
+        if (
+            response.status === 403
+        ) {
+
+            throw new Error(
+                result?.error ||
+                "Secure storage rejected the upload. Please verify your storage permissions."
+            );
+        }
+
+
+        if (
+            response.status === 413
+        ) {
+
+            throw new Error(
+                "The file is larger than the 25 MB limit."
+            );
+        }
+
+
+        throw new Error(
+            result?.error ||
+            `Upload failed (${response.status}).`
+        );
+    }
+
+
+    if (
+        !result?.success
+    ) {
+
+        throw new Error(
+            result?.error ||
+            "Secure storage did not confirm the upload."
+        );
+    }
+
+
+    const storagePath =
+        result.storage_path ||
+        result.file_id ||
+        "";
+
+
+    if (!storagePath) {
+
+        console.error(
+            "Worker upload succeeded but no storage path was returned:",
+            result
+        );
+
+        throw new Error(
+            "Secure storage did not return a storage path."
+        );
+    }
+
+
+    progressCallback?.(
+        95,
+        "Finalizing document..."
+    );
+
+
+    return {
 
         fileId:
-          String(
-            result?.file_id ||
-            result?.fileId ||
-            storagePath
-          ),
+            result.file_id ||
+            storagePath,
 
         storagePath,
 
-        originalName,
+        originalName:
+            result.file_name ||
+            result.original_name ||
+            file.name,
 
         downloadURL:
-          String(
-            result?.downloadURL ||
-            result?.download_url ||
+            result.downloadURL ||
+            result.download_url ||
             ""
-          ),
-
-        fileSize:
-          Number(
-            result?.file_size ||
-            file.size
-          ),
-
-        contentType:
-          String(
-            result?.content_type ||
-            file.type ||
-            ""
-          ),
-
-        storageBackend:
-          String(
-            result?.storage_backend ||
-            "Backblaze B2 via MedLedger Worker"
-          )
-      };
-
-
-    } finally {
-
-      uploadInProgress = false;
-    }
-  }
-
-
+    };
+}
   // ==========================================================
   // DOWNLOAD
   // ==========================================================
