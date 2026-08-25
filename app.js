@@ -3240,6 +3240,20 @@ window.stopMedicineAlarm =
 
 
 // =========================================================
+// TEST ALARM (called by onclick="testMedicineAlarm()" in index.html)
+// =========================================================
+
+window.testMedicineAlarm = function () {
+  startRingingAlarm({
+    id: "test_alarm",
+    name: "Test Medicine Alarm",
+    instruction: "This is a test alarm — your real alarms will sound like this.",
+    time: new Date().toTimeString().slice(0, 5)
+  });
+};
+
+
+// =========================================================
 // ADD MEDICINE
 // =========================================================
 
@@ -3951,6 +3965,34 @@ function renderDashboardUI() {
 // =========================================================
 
 // AI scanner feature removed — will be replaced by new features.
+
+// =========================================================
+// MISSING WINDOW FUNCTIONS (called from index.html onclicks)
+// =========================================================
+
+// selectFolderCategory — folder tiles on vault screen
+window.selectFolderCategory = function (category) {
+  window.setCategoryFilter(category);
+  // scroll to the docs grid
+  const grid = document.getElementById("vaultGrid");
+  if (grid) grid.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
+// focusMedicineForm — "Add Medicine" quick-action button
+window.focusMedicineForm = function () {
+  window.openSection("tracker");
+  setTimeout(() => {
+    const el = document.getElementById("medicineName");
+    if (el) el.focus();
+  }, 300);
+};
+
+// deleteMedicine — alias used in some rendered HTML
+window.deleteMedicine = function (id) {
+  if (window.deleteMedicineRecord) {
+    window.deleteMedicineRecord(id);
+  }
+};
 
 // =========================================================
 // STEP 9 — NAVIGATION + INITIALIZATION
