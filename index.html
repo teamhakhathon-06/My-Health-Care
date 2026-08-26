@@ -447,14 +447,11 @@
             <h1>Good day, <span id="dashboardName">Patient</span> 👋</h1>
            <p>
   Keep prescriptions, blood tests, X-rays, scans, and other medical records
-  organized in your private health vault. You can also set medicine reminders
-  based on your prescribed schedule.
+  organized in your private health vault.
 </p>
             <div class="hero-actions">
               
-              <button type="button" class="btn btn-glass" onclick="openSection('tracker')">
-                <span>⏰ View Medicine Alarms</span>
-              </button>
+             
             </div>
           </div>
 
@@ -478,14 +475,7 @@
             </div>
           </div>
 
-          <div class="stat-card" onclick="openSection('tracker')">
-            <div class="stat-icon-wrap orange"><span>⏰</span></div>
-            <div class="stat-meta">
-              <span class="stat-label">Active Alarms</span>
-              <strong class="stat-value" id="statMedCount">0</strong>
-              <span class="stat-sub" id="statNextMed">No alarms set</span>
-            </div>
-          </div>
+        
 
           <div class="stat-card" onclick="openSection('profile')">
             <div class="stat-icon-wrap blue"><span>👤</span></div>
@@ -698,7 +688,7 @@
             <h1 style="margin-top: 8px;">Upload Medical Report</h1>
             <p>Upload PDF or Image medical files.. (<code>MedVault</code>).</p>
             <div class="secure-upload-note" role="status">
-              🔐 <strong>Secure cloud upload:</strong> MedLedger sends the file through an authenticated storage gateway; your Backblaze application key is never placed in this page.
+              🔐 <strong>Secure cloud upload:</strong> MedLedger sends the file through an authenticated storage gateway.
             </div>
           </div>
         </div>
@@ -771,7 +761,7 @@
               <div class="progress-bar-wrap">
                 <div class="progress-bar-fill" id="screenProgressFill"></div>
               </div>
-              <span id="screenProgressText"> Securely uploading your medical document... </span>
+              <span id="screenProgressText"> Uploading your medical document... </span>
             </div>
 
             <div class="form-actions-flow">
@@ -779,7 +769,7 @@
                 Cancel
               </button>
               <button type="submit" id="screenSubmitBtn" class="btn btn-primary">
-                <span>Securely Upload Document</span>
+                <span> Upload Document</span>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
               </button>
             </div>
