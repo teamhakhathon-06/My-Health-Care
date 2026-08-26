@@ -9,7 +9,12 @@ const APP_SHELL = [
   "./index.html",
   "./style.css",
   "./app.js",
-  "./manifest.json"
+  "./pwa.js",
+  "./search.js",
+  "./data.json",
+  "./manifest.json",
+  "./icon-192.png",
+  "./icon-512.png"
 ];
 
 /* ---------------------------------------------------------
