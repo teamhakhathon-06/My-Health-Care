@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#087f5b">
-<meta name="description" content="MedLedger — Secure Digital Medical Records, Health Documents & Medicine Alarms">
+<meta name="description" content="MedVault — Secure Digital Medical Records, Health Documents & Medicine">
   <title>MedVault</title>
 
   <!-- Google Fonts -->
@@ -131,6 +131,8 @@
       font-size: 0.78rem;
       line-height: 1.45;
     }
+
+    
 
     @media (max-width: 600px) {
       .documents-grid {
@@ -335,6 +337,18 @@
           <span class="notif-dot hidden" id="mobileNotifDot"></span>
         </button>
 
+
+<!-- Locate this block inside <header class="mobile-header-actions"> -->
+<button
+  type="button"
+  class="header-ai-btn"
+  onclick="openSection('medvaultAI')"
+  aria-label="Ask MedVault AI"
+>
+  <span class="icon">✨</span>
+  <span>Ask AI</span>
+</button>
+
         <button type="button" class="profile-pill-btn" onclick="openSection('profile')" title="My Profile">
           <div class="mobile-avatar">U</div>
           <span class="mobile-name" id="mobileHeaderName">Patient</span>
@@ -382,10 +396,15 @@
     <span></span>
   </span>
 </button>
-
           <button class="nav-item active" data-target="dashboard">
             <span class="nav-icon">📊</span>
             <span>Dashboard</span>
+          </button>
+
+          <button class="nav-item" data-target="medvaultAI">
+            <span class="nav-icon">✨</span>
+            <span>Ask MedVault AI</span>
+            <span class="nav-tag-ai">AI</span>
           </button>
 
           <button class="nav-item" data-target="vault">
@@ -405,6 +424,8 @@
             <span class="nav-badge orange" id="navMedCount">0</span>
           </button>
 
+          
+
           <div class="nav-section-title">SETTINGS & PRIVACY</div>
 
           <button class="nav-item" data-target="profile">
@@ -423,10 +444,11 @@
       </div>
           </div>
 
-        <button type="button" id="logoutBtn" class="sidebar-logout-btn">
-          <span>Sign Out</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </button>
+       <!-- Sidebar Logout Button -->
+<button type="button" id="logoutBtn" class="sidebar-logout-btn" onclick="window.signOut()">
+  <span>Sign Out</span>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="9"/></svg>
+</button>
       </div>
     </aside>
 
@@ -884,6 +906,177 @@
 
       </section>
 
+     <!-- =======================================================
+     SECTION 6: ASK MEDVAULT AI (Full-Page ChatGPT Interface)
+======================================================== -->
+<section class="section" id="medvaultAI">
+
+  <div class="ai-fullpage-layout">
+
+    <!-- AI Sidebar Navigation (ChatGPT-Style Workspace Switcher) -->
+    <aside class="ai-sidebar" id="aiSidebar">
+      <div class="ai-sidebar-header">
+        <button type="button" class="ai-btn-new-chat" id="aiNewChatBtn" onclick="MedVaultAI.newChat()">
+          <span class="icon">＋</span>
+          <span class="lbl">New Chat</span>
+        </button>
+      </div>
+
+      <!-- Feature Mode Switcher -->
+      <div class="ai-mode-switcher">
+        <div class="ai-nav-label">CAPABILITIES</div>
+        <button type="button" class="ai-mode-btn active" data-mode="all" onclick="MedVaultAI.switchMode('all', this)">
+          <span class="icon">💬</span>
+          <span class="lbl">General Assistant</span>
+        </button>
+        <button type="button" class="ai-mode-btn" data-mode="knowledge" onclick="MedVaultAI.switchMode('knowledge', this)">
+          <span class="icon">📚</span>
+          <span class="lbl">Medical Knowledge</span>
+        </button>
+        <button type="button" class="ai-mode-btn" data-mode="medicines" onclick="MedVaultAI.switchMode('medicines', this)">
+          <span class="icon">💊</span>
+          <span class="lbl">Medicine Schedule</span>
+        </button>
+        <button type="button" class="ai-mode-btn" data-mode="records" onclick="MedVaultAI.switchMode('records', this)">
+          <span class="icon">📁</span>
+          <span class="lbl">Health Records</span>
+        </button>
+      </div>
+
+      <!-- Recent Conversations Log -->
+      <div class="ai-chat-history">
+        <div class="ai-nav-label">RECENT CONVERSATIONS</div>
+        <div class="ai-history-list" id="aiHistoryList">
+          <button type="button" class="ai-history-item active">
+            <span class="icon">💬</span>
+            <span class="lbl" id="aiActiveChatLabel">Current Session</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Footer Privacy Status Card -->
+      <div class="ai-sidebar-footer">
+        <div class="ai-privacy-mini">
+          <span class="icon">🔐</span>
+          <div class="txt">
+            <strong>100% On-Device AI</strong>
+            
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace Area -->
+    <div class="ai-workspace">
+
+      <!-- Workspace Top Toolbar -->
+      <header class="ai-workspace-header">
+        <div class="header-left">
+          <button type="button" class="ai-toggle-sidebar-btn" id="aiToggleSidebarBtn" onclick="MedVaultAI.toggleSidebar()" title="Toggle AI Sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+          </button>
+          
+          <div class="ai-title-group">
+            <h1 id="aiCurrentTitle">Ask MedVault</h1>
+            <span class="ai-status-badge">
+              <span class="ai-status-dot"></span>
+              <span id="aiStatusText">Engine Ready</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <button type="button" class="ai-action-btn" onclick="MedVaultAI.clearHistory()" title="Clear Chat History">
+            <span>🗑️ Clear Chat</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Central Scrollable Chat Container -->
+      <div class="ai-chat-scroll-area" id="aiScrollArea">
+        <div class="ai-chat-thread" id="aiMessages" aria-live="polite">
+
+          <!-- Welcome / Default Screen -->
+          <div class="ai-welcome-hero" id="aiWelcomeHero">
+            <div class="ai-welcome-badge">✦ MEDVAULT INTELLIGENCE</div>
+            <h2>How can I assist your health today?</h2>
+            <p>Search local medical knowledge, review medicine alarms, or analyze stored health documents offline.</p>
+
+            <div class="ai-suggestions-grid" id="aiSuggestionsGrid">
+              <button type="button" class="ai-suggestion-card" onclick="MedVaultAI.sendSuggested('What medicines am I currently taking?')">
+                <span class="card-icon">💊</span>
+                <strong>My Medicines</strong>
+                <p>Check scheduled times and active daily dosages</p>
+              </button>
+
+              <button type="button" class="ai-suggestion-card" onclick="MedVaultAI.sendSuggested('How many medical reports do I have uploaded?')">
+                <span class="card-icon">📄</span>
+                <strong>My Health Records</strong>
+                <p>Summarize uploaded lab tests and doctors' notes</p>
+              </button>
+
+              <button type="button" class="ai-suggestion-card" onclick="MedVaultAI.sendSuggested('What is blood pressure?')">
+                <span class="card-icon">❤️</span>
+                <strong>Explain Blood Pressure</strong>
+                <p>Learn physiological terms & reference ranges</p>
+              </button>
+
+              <button type="button" class="ai-suggestion-card" onclick="MedVaultAI.sendSuggested('What is HbA1c test?')">
+                <span class="card-icon">🧪</span>
+                <strong>Explain HbA1c</strong>
+                <p>Understand blood sugar monitoring standards</p>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Typing Indicator -->
+        <div class="ai-typing-indicator hidden" id="aiProcessing">
+          <div class="avatar-mini">✦</div>
+          <div class="typing-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+            <em>Searching MedVault engine...</em>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sticky Prompt Input Area -->
+      <footer class="ai-input-wrapper">
+        <form class="ai-input-form" id="aiChatForm" onsubmit="MedVaultAI.handleSubmit(event)">
+          <textarea
+            id="aiInput"
+            rows="1"
+            maxlength="1000"
+            placeholder="Ask MedVault about your health or medicines..."
+            autocomplete="off"
+            onkeydown="MedVaultAI.handleKeyDown(event)"
+          ></textarea>
+
+          <button type="submit" id="aiSendBtn" class="ai-submit-btn" aria-label="Send message">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="19" x2="12" y2="5"></line>
+              <polyline points="5 12 12 5 19 12"></polyline>
+            </svg>
+          </button>
+        </form>
+
+        <div class="ai-disclaimer">
+          MedVault AI provides informational assistance using local data. It does not replace professional medical diagnosis.
+        </div>
+      </footer>
+
+    </div>
+
+  </div>
+
+</section>
+
       <!-- =======================================================
            SECTION 6: PROFILE & PRIVACY
       ======================================================== -->
@@ -941,7 +1134,7 @@
     <div class="sec-icon">🛡️</div>
     <h3>Account Security</h3>
     <p>
-      Never share your password, verification codes, or account access with
+      Never share your password or account access with
       anyone. Always sign out when using a shared or public device.
     </p>
   </div>
@@ -985,10 +1178,10 @@
 </div>
 
         <div class="profile-actions-bar">
-          <button type="button" id="profileLogoutBtn" class="btn btn-danger">
-            <span>Sign Out of MedVault</span>
-          </button>
-        </div>
+         <!-- Profile Section Logout Button -->
+<button type="button" id="profileLogoutBtn" class="btn btn-danger" onclick="window.signOut()">
+  <span>Sign Out of MedVault</span>
+</button>
 
       </section>
 
@@ -1065,6 +1258,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- Application Javascript (ES Module) -->
   <script type="module" src="app.js"></script>
+  <script src="./search.js"></script>
   <script src="pwa.js"></script>
 </body>
 </html>
