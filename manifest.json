@@ -2,7 +2,7 @@
   "name": "MedVault",
   "short_name": "MedVault",
   "description": "Secure digital health Record",
-  "start_url": "./",
+  "start_url": "index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
