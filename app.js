@@ -299,23 +299,84 @@ document.addEventListener("DOMContentLoaded", () => {
 
 /* ========================= PROFILE ========================= */
 
-async function loadProfile(user){
-  const {data,error}=await supabase.from("profiles").select("*").eq("id",user.id).maybeSingle();
-  if(error) throw error;
-  let p=data;
-  if(!p){
-    p={
-      id:user.id,
-      name:user.user_metadata?.name||user.user_metadata?.full_name||user.email?.split("@")[0]||"Patient",
-      email:user.email||"",
-      blood:user.user_metadata?.blood||"O+",
-      age:user.user_metadata?.age||""
-    };
-    const r=await supabase.from("profiles").upsert(p,{onConflict:"id"}).select().single();
-    if(r.error) throw r.error;
-    p=r.data;
+async function loadProfile(user) {
+  if (!user?.id) {
+    throw new Error("No authenticated user.");
   }
-  currentProfile={name:p.name||"Patient",email:p.email||user.email||"",blood:p.blood||"O+",age:p.age||""};
+
+  // First: get the existing profile
+  const { data: existingProfile, error: selectError } =
+    await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+
+  if (selectError) {
+    console.error("❌ Profile SELECT failed:", selectError);
+    throw selectError;
+  }
+
+  let p = existingProfile;
+
+  // If profile doesn't exist, create it
+  if (!p) {
+    const newProfile = {
+      id: user.id,
+      name:
+        user.user_metadata?.name ||
+        user.user_metadata?.full_name ||
+        user.email?.split("@")[0] ||
+        "Patient",
+      email: user.email || "",
+      blood: user.user_metadata?.blood || "O+",
+      age: user.user_metadata?.age || ""
+    };
+
+    console.log("🆕 Creating profile:", newProfile);
+
+    const { data: createdProfile, error: insertError } =
+      await supabase
+        .from("profiles")
+        .insert(newProfile)
+        .select("*")
+        .single();
+
+    if (insertError) {
+      // Another process may have created it.
+      if (insertError.code === "23505") {
+        console.warn("⚠️ Profile already exists. Loading existing profile...");
+
+        const { data: retryProfile, error: retryError } =
+          await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", user.id)
+            .single();
+
+        if (retryError) {
+          throw retryError;
+        }
+
+        p = retryProfile;
+      } else {
+        console.error("❌ Profile INSERT failed:", insertError);
+        throw insertError;
+      }
+    } else {
+      p = createdProfile;
+    }
+  }
+
+  currentProfile = {
+    name: p?.name || "Patient",
+    email: p?.email || user.email || "",
+    blood: p?.blood || "O+",
+    age: p?.age || ""
+  };
+
+  console.log("👤 Profile loaded:", currentProfile);
+
   renderProfileUI(currentProfile);
 }
 
@@ -337,14 +398,40 @@ function renderProfileUI(p){
   document.querySelectorAll(".mobile-avatar").forEach(x=>x.textContent=avatar);
 }
 
-function listenToProfile(user){
-  unsubscribeProfile?.();
-  loadProfile(user).catch(e=>console.error("Profile:",e));
-  const channel=supabase.channel(`profile-${user.id}`)
-    .on("postgres_changes",{event:"*",schema:"public",table:"profiles",filter:`id=eq.${user.id}`},
-      payload=>{if(payload.new)loadProfile(user).catch(console.error);})
+function listenToProfile(user) {
+  // Remove previous profile listener
+  if (unsubscribeProfile) {
+    unsubscribeProfile();
+    unsubscribeProfile = null;
+  }
+
+  loadProfile(user).catch(e => {
+    console.error("❌ Profile:", e);
+  });
+
+  const channel = supabase
+    .channel(`profile-${user.id}-${Date.now()}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "profiles",
+        filter: `id=eq.${user.id}`
+      },
+      payload => {
+        console.log("🔄 Profile changed:", payload);
+
+        if (payload.new) {
+          loadProfile(user).catch(console.error);
+        }
+      }
+    )
     .subscribe();
-  unsubscribeProfile=()=>supabase.removeChannel(channel);
+
+  unsubscribeProfile = () => {
+    supabase.removeChannel(channel);
+  };
 }
 
 /* ========================= STORAGE ========================= */
