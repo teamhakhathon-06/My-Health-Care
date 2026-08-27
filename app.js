@@ -41,7 +41,7 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
 const formatDate = v => { if (!v) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); };
 const formatTime = t => { if (!t) return ""; const [h, m] = String(t).split(":"); const d = new Date(); d.setHours(+h, +m, 0, 0); return d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }); };
 const formatBytes = b => { if (!b) return "0 KB"; const s = ["Bytes", "KB", "MB", "GB"], i = Math.min(Math.floor(Math.log(b) / Math.log(1024)), s.length - 1); return `${(b / 1024 ** i).toFixed(1)} ${s[i]}`; };
-const documentIcon = (type = "", name = "") => name.toLowerCase().endsWith(".pdf") || type.includes("pdf") ? "📕" : "🖼️";
+const documentIcon = (type = "", name = "") => String(name).toLowerCase().endsWith(".pdf") || String(type).includes("pdf") ? "📕" : "🖼️";
 
 const GREETINGS_AND_COURTESIES = [
   "hi", "hello", "hey",
@@ -79,7 +79,6 @@ let dbPromise = null;
 function initIndexedDB() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
-    // Upgraded database version to 2 to support offline documents
     const req = indexedDB.open("MedVaultOfflineDB", 2);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
@@ -89,7 +88,6 @@ function initIndexedDB() {
       if (!db.objectStoreNames.contains("sync_queue")) {
         db.createObjectStore("sync_queue", { keyPath: "id", autoIncrement: true });
       }
-      // NEW: Store for local document files (blobs) when offline
       if (!db.objectStoreNames.contains("offline_documents")) {
         db.createObjectStore("offline_documents", { keyPath: "id" });
       }
@@ -100,7 +98,6 @@ function initIndexedDB() {
   return dbPromise;
 }
 
-// NEW: Save document file blob locally
 async function saveDocumentOffline(docRecord, fileBlob) {
   const db = await initIndexedDB();
   const tx = db.transaction("offline_documents", "readwrite");
@@ -111,7 +108,6 @@ async function saveDocumentOffline(docRecord, fileBlob) {
   });
 }
 
-// NEW: Get local document file blob
 async function getOfflineDocument(id) {
   const db = await initIndexedDB();
   return new Promise((resolve) => {
@@ -157,35 +153,46 @@ async function syncOfflineData() {
 
       toast("Syncing Data", "Re-connected to network. Syncing offline updates...", "🔄");
 
+      const completedIds = [];
       for (const item of items) {
-        if (item.actionType === "ADD_MEDICINE") {
-          await supabase.from("medicines").upsert(item.data);
-        } else if (item.actionType === "UPDATE_MEDICINE") {
-          await supabase.from("medicines").update(item.data.changes).eq("id", item.data.id).eq("owner_id", currentUser.id);
-        } else if (item.actionType === "DELETE_MEDICINE") {
-          await supabase.from("medicines").delete().eq("id", item.data.id).eq("owner_id", currentUser.id);
-        } else if (item.actionType === "ADD_DOCUMENT") {
-          // NEW: Upload queued offline document to Supabase Storage & DB
-          try {
-            const path = item.data.storagePath;
+        try {
+          let failed = null;
+          if (item.actionType === "ADD_MEDICINE") {
+            ({ error: failed } = await supabase.from("medicines").upsert(item.data));
+          } else if (item.actionType === "UPDATE_MEDICINE") {
+            ({ error: failed } = await supabase.from("medicines").update(item.data.changes).eq("id", item.data.id).eq("owner_id", currentUser.id));
+          } else if (item.actionType === "DELETE_MEDICINE") {
+            ({ error: failed } = await supabase.from("medicines").delete().eq("id", item.data.id).eq("owner_id", currentUser.id));
+          } else if (item.actionType === "ADD_DOCUMENT") {
+            const path = normalizeStoragePath(item.data.storagePath);
             const fileBlob = item.data.fileBlob;
             const record = item.data.record;
-            
-            await supabase.storage.from(SUPABASE_CONFIG.bucket).upload(path, fileBlob, { 
-              cacheControl: "3600", 
-              contentType: record.type, 
-              upsert: true 
+            const storageResult = await supabase.storage.from(SUPABASE_CONFIG.bucket).upload(path, fileBlob, {
+              cacheControl: "3600",
+              contentType: record.type,
+              upsert: true
             });
-            await supabase.from("documents").upsert(record);
-          } catch (err) {
-            console.error("Failed syncing offline document:", err);
+            if (storageResult.error) throw storageResult.error;
+            const dbResult = await supabase.from("documents").upsert(record);
+            failed = dbResult.error;
           }
+          if (failed) throw failed;
+          completedIds.push(item.id);
+        } catch (err) {
+          console.error("Failed syncing offline action:", item.actionType, err);
         }
       }
 
-      const clearTx = db.transaction("sync_queue", "readwrite");
-      clearTx.objectStore("sync_queue").clear();
-      toast("Sync Complete", "Offline logs and files updated with Supabase cloud.", "✅");
+      if (completedIds.length) {
+        const clearTx = db.transaction("sync_queue", "readwrite");
+        const store = clearTx.objectStore("sync_queue");
+        completedIds.forEach(id => store.delete(id));
+      }
+      toast(
+        "Sync Complete",
+        completedIds.length === items.length ? "Offline data synced with Supabase." : `${completedIds.length}/${items.length} offline changes synced. Remaining changes will retry.`,
+        completedIds.length === items.length ? "✅" : "⚠️"
+      );
       loadMedicines();
       loadDocuments();
     };
@@ -195,6 +202,7 @@ async function syncOfflineData() {
 }
 
 window.addEventListener("online", syncOfflineData);
+
 /* ================= BACKGROUND ALARMS & NOTIFICATIONS ================= */
 async function requestNotificationPermission() {
   if ("Notification" in window && Notification.permission === "default") {
@@ -265,7 +273,6 @@ $("googleSignInBtn")?.addEventListener("click", async () => {
   if (error && $("loginError")) $("loginError").textContent = authError(error);
 });
 
-// Global, robust Sign Out Function
 window.signOut = async function signOut() {
   try {
     if (typeof window.closeMobileSidebar === "function") {
@@ -287,7 +294,6 @@ document.addEventListener("DOMContentLoaded", () => {
   $("logoutBtn")?.addEventListener("click", window.signOut);
   $("profileLogoutBtn")?.addEventListener("click", window.signOut);
 });
-$("profileLogoutBtn")?.addEventListener("click", signOut);
 
 /* ================= THEME ================= */
 (function () {
@@ -386,8 +392,10 @@ function safeName(n) {
 }
 
 function storagePath(uid, did, f) {
+  // Always relative to the bucket root
   return `users/${uid}/${did}/${Date.now()}-${safeName(f.name)}`;
 }
+
 
 async function uploadToSupabase(file, meta = {}, progress) {
   if (!currentUser) throw Error("Please sign in before uploading.");
@@ -451,7 +459,6 @@ $("screenUploadForm")?.addEventListener("submit", async e => {
   button?.setAttribute("disabled", "true");
   progress?.classList.remove("hidden");
 
-  // Create record structure
   const path = storagePath(currentUser.id, docId, selectedScreenFile);
   const record = { 
     id: docId, 
@@ -473,7 +480,6 @@ $("screenUploadForm")?.addEventListener("submit", async e => {
 
   try {
     if (!navigator.onLine) {
-      // OFFLINE HANDLER: Cache document locally and queue sync
       await saveDocumentOffline(record, selectedScreenFile);
       await queueOfflineAction("ADD_DOCUMENT", { storagePath: path, record, fileBlob: selectedScreenFile });
       
@@ -489,7 +495,6 @@ $("screenUploadForm")?.addEventListener("submit", async e => {
       return;
     }
 
-    // ONLINE HANDLER: Standard upload to Supabase
     const storage = await uploadToSupabase(selectedScreenFile, { documentId: docId }, (p, m) => { 
       if (fill) fill.style.width = `${p}%`; 
       if (text) text.textContent = m; 
@@ -501,7 +506,6 @@ $("screenUploadForm")?.addEventListener("submit", async e => {
       throw r.error; 
     }
 
-    // Also cache online uploads locally for seamless offline reading later
     await saveDocumentOffline(record, selectedScreenFile);
 
     userDocuments.unshift(normalizeDocument(r.data));
@@ -522,9 +526,37 @@ $("screenUploadForm")?.addEventListener("submit", async e => {
   }
 });
 
+function normalizeStoragePath(path) {
+  let p = String(path || "").trim().replace(/^\/+/, "");
+  // The Supabase Storage API expects a path relative to the bucket root.
+  // Remove an accidental bucket prefix if an older record contains it.
+  const bucket = SUPABASE_CONFIG.bucket.replace(/^\/+|\/+$/g, "");
+  if (p.startsWith(bucket + "/")) p = p.slice(bucket.length + 1);
+  return p;
+}
+
+async function downloadBlobFromStorage(path) {
+  const cleanPath = normalizeStoragePath(path);
+  if (!cleanPath) throw Error("Document storage path is missing.");
+
+  // Prefer the authenticated Storage download API. This avoids failures caused
+  // by stale/invalid signed URLs and works with private buckets when RLS allows it.
+  const result = await supabase.storage.from(SUPABASE_CONFIG.bucket).download(cleanPath);
+  if (result.error) throw result.error;
+  if (!(result.data instanceof Blob)) throw Error("Storage returned an invalid document.");
+  return result.data;
+}
+
 window.downloadDocumentRecord = async id => {
   const d = userDocuments.find(x => x.id === id);
   if (!currentUser || !d) return toast("Download Error", "Document not found.", "⚠️");
+  
+  // Resolve path safely as a string
+  const targetPath = normalizeStoragePath(d.storagePath || d.supabaseStoragePath || "");
+
+  if (!targetPath) {
+    return toast("Download Error", "Document storage path is missing or invalid.", "⚠️");
+  }
   
   try {
     // If offline, try serving from local IndexedDB cache
@@ -546,29 +578,75 @@ window.downloadDocumentRecord = async id => {
     }
 
     // Online Download from Supabase
-    toast("Preparing Download", "Creating secure document link...", "☁️");
-    const r = await supabase.storage.from(SUPABASE_CONFIG.bucket).createSignedUrl(d.storagePath, SUPABASE_CONFIG.signedUrlExpiry);
-    if (r.error) throw r.error;
-    
-    // Fetch and cache the file locally for future offline access
-    fetch(r.data.signedUrl)
-      .then(res => res.blob())
-      .then(blob => saveDocumentOffline(d, blob))
-      .catch(err => console.warn("Failed caching downloaded doc offline:", err));
+    toast("Preparing Download", "Fetching your secure document...", "☁️");
 
+    let blob = null;
+    let signedUrl = null;
+
+    // First try a short-lived signed URL. If Supabase rejects it (for example
+    // because an older record contains a stale path), fall back to authenticated
+    // Storage.download(), which is more reliable for private buckets.
+    try {
+      const signed = await supabase.storage
+        .from(SUPABASE_CONFIG.bucket)
+        .createSignedUrl(targetPath, SUPABASE_CONFIG.signedUrlExpiry);
+      if (!signed.error && signed.data?.signedUrl) signedUrl = signed.data.signedUrl;
+    } catch (signedError) {
+      console.warn("Signed URL creation failed; using authenticated download:", signedError);
+    }
+
+    if (signedUrl) {
+      const response = await fetch(signedUrl);
+      if (!response.ok) throw Error(`Document download failed (HTTP ${response.status}).`);
+      blob = await response.blob();
+    } else {
+      blob = await downloadBlobFromStorage(targetPath);
+    }
+
+    await saveDocumentOffline(d, blob);
+    const fileUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = r.data.signedUrl;
+    a.href = fileUrl;
     a.download = d.originalName || d.name || "medical-document";
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
     a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(fileUrl), 10000);
   } catch (e) {
     toast("Download Failed", errMsg(e), "⚠️");
   }
 };
 
+// Clean bucket prefix if present
+function sanitizePath(path) {
+  return String(path || "").replace
+}
+
 function normalizeDocument(d) {
-  return { ...d, id: d.id, name: d.name || d.original_name || "Medical Document", originalName: d.original_name || d.name || "medical-document", size: +d.size || 0, formattedSize: d.formatted_size || formatBytes(d.size), category: d.category || "Other", recordDate: d.record_date || "", doctor: d.doctor || "", storagePath: d.storage_path || d.supabase_storage_path || "", supabaseStoragePath: d.supabase_storage_path || d.storage_path || "", icon: d.icon || documentIcon(d.type, d.original_name || d.name), uploadedAt: d.uploaded_at ? new Date(d.uploaded_at).getTime() : 0 };
+  // Extract the raw path string from any potential database column key
+  const rawPath = String(
+    d.storagePath || 
+    d.storage_path || 
+    d.supabaseStoragePath || 
+    d.supabase_storage_path || 
+    ""
+  ).trim();
+
+  return {
+    ...d,
+    id: d.id,
+    name: d.name || d.original_name || "Medical Document",
+    originalName: d.original_name || d.name || "medical-document",
+    size: +d.size || 0,
+    formattedSize: d.formatted_size || formatBytes(d.size),
+    category: d.category || "Other",
+    recordDate: d.record_date || "",
+    doctor: d.doctor || "",
+    storagePath: rawPath,
+    supabaseStoragePath: rawPath,
+    icon: d.icon || documentIcon(d.type, d.original_name || d.name),
+    uploadedAt: d.uploaded_at ? new Date(d.uploaded_at).getTime() : 0
+  };
 }
 
 async function loadDocuments() {
@@ -591,28 +669,33 @@ function listenToDocuments() {
 
 function updateCategoryCounts() {
   const counts = {};
-  userDocuments.forEach(d => counts[d.category] = (counts[d.category] || 0) + 1);
+  let totalBytes = 0;
+  userDocuments.forEach(d => {
+    counts[d.category] = (counts[d.category] || 0) + 1;
+    totalBytes += (d.size || 0);
+  });
+  
   if ($("count-all")) $("count-all").textContent = userDocuments.length;
   if ($("navDocCount")) $("navDocCount").textContent = userDocuments.length;
-  const map = { Prescription: "folderCountPrescription", "Blood Test": "folderCountBloodTest", Scan: "folderCountScan", Surgery: "folderCountSurgery", Vaccination: "folderCountVaccination", Other: "folderCountOther" };
-  Object.entries(map).forEach(([c, id]) => { if ($(id)) $(id).textContent = `${counts[c] || 0} files`; });
-}
+  if ($("vaultTotalBadge")) $("vaultTotalBadge").textContent = `${userDocuments.length} Records`;
+  if ($("vaultStorageUsed")) $("vaultStorageUsed").textContent = formatBytes(totalBytes);
 
-function renderDocumentsUI() {
-  const grid = $("vaultGrid");
-  if (!grid) return;
-  let docs = [...userDocuments];
-  if (activeCategoryFilter !== "all") docs = docs.filter(d => (d.category || "Other") === activeCategoryFilter);
-  if (activeSearchQuery) docs = docs.filter(d => `${d.name} ${d.doctor} ${d.category}`.toLowerCase().includes(activeSearchQuery));
-  if (!docs.length) { grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🗂️</div><strong>No medical records found</strong><p>Upload prescriptions, reports or diagnostic scans.</p></div>`; return; }
-  grid.innerHTML = docs.map(d => `<div class="doc-card"><div class="doc-header"><div class="doc-icon-badge">${esc(d.icon || "📄")}</div><span class="category-tag">${esc(d.category)}</span></div><div class="doc-name">${esc(d.name)}</div><div class="doc-doctor">${d.doctor ? `👨‍⚕️ ${esc(d.doctor)}` : "🏥 Medical Report"}</div><div class="doc-meta-strip">📅 ${formatDate(d.recordDate || d.uploadedAt)} · 💾 ${formatBytes(d.size)}</div><div class="doc-actions"><button class="btn-open" onclick="downloadDocumentRecord('${esc(d.id)}')">Download ↧</button><button class="btn-del" onclick="deleteDocumentRecord('${esc(d.id)}')">Delete</button></div></div>`).join("");
+  const map = { 
+    Prescription: "folderCountPrescription", 
+    "Blood Test": "folderCountBloodTest", 
+    Scan: "folderCountScan", 
+    Surgery: "folderCountSurgery", 
+    Vaccination: "folderCountVaccination", 
+    Other: "folderCountOther" 
+  };
+  Object.entries(map).forEach(([c, id]) => { if ($(id)) $(id).textContent = `${counts[c] || 0} files`; });
 }
 
 window.deleteDocumentRecord = async id => {
   const d = userDocuments.find(x => x.id === id);
   if (!d || !currentUser || !confirm(`Delete "${d.name}"?`)) return;
   try {
-    if (d.storagePath) { const r = await supabase.storage.from(SUPABASE_CONFIG.bucket).remove([d.storagePath]); if (r.error) throw r.error; }
+    if (d.storagePath) { const r = await supabase.storage.from(SUPABASE_CONFIG.bucket).remove([d.storagePath]); if (r.error) console.warn(r.error); }
     const r = await supabase.from("documents").delete().eq("id", id).eq("owner_id", currentUser.id);
     if (r.error) throw r.error;
     userDocuments = userDocuments.filter(x => x.id !== id);
@@ -627,7 +710,56 @@ window.deleteDocumentRecord = async id => {
 };
 
 window.filterDocuments = () => { activeSearchQuery = $("docSearchInput")?.value.trim().toLowerCase() || ""; renderDocumentsUI(); };
-window.setCategoryFilter = c => { activeCategoryFilter = c; renderDocumentsUI(); };
+window.setCategoryFilter = c => { 
+  activeCategoryFilter = c; 
+  document.querySelectorAll("#categoryFilterBar .filter-pill").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.cat === c);
+  });
+  renderDocumentsUI(); 
+};
+
+// Render Document Vault UI Safely
+function renderDocumentsUI() {
+  const grid = $("vaultGrid");
+  if (!grid) return;
+
+  let docs = Array.isArray(userDocuments) ? [...userDocuments] : [];
+  
+  if (activeCategoryFilter && activeCategoryFilter !== "all") {
+    docs = docs.filter(d => (d.category || "Other") === activeCategoryFilter);
+  }
+  
+  if (activeSearchQuery) {
+    docs = docs.filter(d => `${d.name} ${d.doctor} ${d.category}`.toLowerCase().includes(activeSearchQuery.toLowerCase()));
+  }
+
+  if (!docs.length) {
+    grid.innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1">
+        <div class="empty-icon">🗂️</div>
+        <strong>No medical records found</strong>
+        <p>Upload prescriptions, reports or diagnostic scans.</p>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openSection('uploadScreen')">＋ Upload Document</button>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = docs.map(d => `
+    <div class="doc-card">
+      <div class="doc-header">
+        <div class="doc-icon-badge">${esc(d.icon || "📄")}</div>
+        <span class="category-tag">${esc(d.category || "General")}</span>
+      </div>
+      <div class="doc-name">${esc(d.name)}</div>
+      <div class="doc-doctor">${d.doctor ? `👨‍⚕️ ${esc(d.doctor)}` : "🏥 Medical Report"}</div>
+      <div class="doc-meta-strip">📅 ${formatDate(d.recordDate || d.uploadedAt)} · 💾 ${formatBytes(d.size)}</div>
+      <div class="doc-actions">
+        <button type="button" class="btn-open" onclick="downloadDocumentRecord('${esc(d.id)}')">Download ↧</button>
+        <button type="button" class="btn-del" onclick="deleteDocumentRecord('${esc(d.id)}')">Delete</button>
+      </div>
+    </div>
+  `).join("");
+}
 
 /* ================= MEDICINES (OFFLINE-FIRST ENABLED) ================= */
 function normalizeMedicine(m) { return { ...m, takenTodayDate: m.taken_today_date || "", enabled: m.enabled !== false }; }
@@ -647,7 +779,6 @@ async function loadMedicines() {
   if (r.error) { toast("Medicine Error", errMsg(r.error), "⚠️"); return; }
   userMedicines = (r.data || []).map(normalizeMedicine);
   
-  // Cache fetched records locally in IndexedDB
   userMedicines.forEach(m => saveMedicineOffline(m));
 
   renderMedicinesUI();
@@ -856,16 +987,26 @@ function renderDashboardUI() {
   if ($("statLastDoc")) $("statLastDoc").textContent = userDocuments[0] ? formatDate(userDocuments[0].recordDate || userDocuments[0].uploadedAt) : "No uploads yet";
   const next = userMedicines.filter(m => m.enabled !== false).sort((a, b) => a.time.localeCompare(b.time))[0];
   if ($("statNextMed")) $("statNextMed").textContent = next ? `${formatTime(next.time)} next` : "No alarms set";
-  if ($("recentActivity")) $("recentActivity").innerHTML = userDocuments.slice(0, 4).map(d => `<div class="recent-doc-item"><div class="recent-doc-icon">${esc(d.icon || "📄")}</div><div class="recent-doc-info"><strong>${esc(d.name)}</strong><span>${esc(d.category || "Record")} · ${formatDate(d.recordDate || d.uploadedAt)}</span></div><button class="btn-link" onclick="downloadDocumentRecord('${esc(d.id)}')">Download</button></div>`).join("");
+  if ($("recentActivity")) $("recentActivity").innerHTML = userDocuments.slice(0, 4).map(d => `<div class="recent-doc-item"><div class="recent-doc-icon">${esc(d.icon || "📄")}</div><div class="recent-doc-info"><strong>${esc(d.name)}</strong><span>${esc(d.category || "Record")} · ${formatDate(d.recordDate || d.uploadedAt)}</span></div><button type="button" class="btn-link" onclick="downloadDocumentRecord('${esc(d.id)}')">Download</button></div>`).join("");
   if ($("dashboardMedList")) $("dashboardMedList").innerHTML = userMedicines.slice(0, 4).map(m => `<div class="recent-doc-item"><div class="recent-doc-icon">💊</div><div class="recent-doc-info"><strong>${esc(m.name)}</strong><span>${esc(m.instruction || "Daily")} · ${formatTime(m.time)}</span></div></div>`).join("");
 }
 
-window.openSection = id => {
-  document.querySelectorAll(".section").forEach(s => s.classList.toggle("active", s.id === id));
-  document.querySelectorAll(".nav-item,.bottom-nav-item").forEach(b => b.classList.toggle("active", b.dataset.target === id));
+function openSection(sectionId) {
+  document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
+
+  const targetSection = document.getElementById(sectionId);
+  if (targetSection) {
+    targetSection.classList.add('active');
+  }
+
+  document.querySelectorAll('.sidebar-nav .nav-item, .bottom-nav-item').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-target') === sectionId);
+  });
   window.closeMobileSidebar?.();
   window.scrollTo({ top: 0, behavior: "smooth" });
-};
+}
+window.openSection = openSection;
+
 window.selectFolderCategory = c => { window.setCategoryFilter(c); $("vaultGrid")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
 window.focusMedicineForm = () => { window.openSection("tracker"); setTimeout(() => $("medicineName")?.focus(), 300); };
 window.toggleMobileSidebar = () => {
@@ -974,15 +1115,40 @@ function personalAnswer(q) {
   return out.length ? out.join("\n\n") : null;
 }
 
+function aiNameKey() {
+  return `medvault-ai-name:${currentUser?.id || "anonymous"}`;
+}
+
+function rememberUserNameFromMessage(text) {
+  const match = String(text || "").match(/\b(?:my name is|i am|i'm|im|this is|call me)\s+([A-Za-z][A-Za-z'\-]{1,30}(?:\s+[A-Za-z][A-Za-z'\-]{1,30}){0,2})\b/i);
+  if (!match || !currentUser) return null;
+  const name = match[1].trim().replace(/[.!?,;:]+$/, "");
+  if (!name) return null;
+  try { localStorage.setItem(aiNameKey(), name); } catch {}
+  return name;
+}
+
+function rememberedUserName() {
+  try { return localStorage.getItem(aiNameKey()) || currentProfile.name || "there"; } catch { return currentProfile.name || "there"; }
+}
+
 async function answerAI(q) {
   const clean = String(q || "").trim();
   if (!clean) return { text: "Please type a question.", sources: [] };
 
-  if (isGreetingOrCourtesy(clean)) {
-    return {
-      text: "You're welcome! I am here to provide educational health information and help you navigate the information stored in MedVault.",
-      sources: []
-    };
+  const learnedName = rememberUserNameFromMessage(clean);
+  const greetingMatch = /^(hi|hello|hey|good morning|good afternoon|good evening|good night)(?:[!,. ]|$)/i.test(clean);
+  if (greetingMatch || isGreetingOrCourtesy(clean)) {
+    const name = learnedName || rememberedUserName();
+    const first = String(name || "there").split(/\s+/)[0];
+    if (/^(thank you|thanks|you're welcome|youre welcome)$/i.test(clean.replace(/[.!?]+$/, ""))) {
+      return { text: `You're welcome, ${first}! I'm here to help you with MedVault.`, sources: [] };
+    }
+    return { text: `Hello ${first}! I'm MedVault AI. I can help with medical knowledge, your saved medicines, uploaded records, and your MedVault profile.`, sources: [] };
+  }
+
+  if (learnedName && /\b(?:my name is|i am|i'm|im|this is|call me)\b/i.test(clean)) {
+    return { text: `Nice to meet you, ${learnedName.split(/\s+/)[0]}! I'll remember your name for this MedVault account on this device.`, sources: [] };
   }
 
   if (/\b(help|what can you do|how can you help)\b/i.test(clean)) return { text: "You can ask about medical topics in data.json, your saved medicines, medicine schedule, uploaded-document metadata, and profile details. I do not invent facts outside the local knowledge base.", sources: [] };
@@ -1270,11 +1436,13 @@ async function onUser(user) {
     currentUser = null;
     userDocuments = [];
     userMedicines = [];
+    userExpenses = [];
     currentProfile = { name: "", email: "", blood: "O+", age: "" };
     unsubscribeProfile?.();
     unsubscribeDocuments?.();
     unsubscribeMedicines?.();
-    unsubscribeProfile = unsubscribeDocuments = unsubscribeMedicines = null;
+    unsubscribeExpenses?.();
+    unsubscribeProfile = unsubscribeDocuments = unsubscribeMedicines = unsubscribeExpenses = null;
     clearInterval(medicineAlarmTimer);
     clearInterval(activeAlarmInterval);
     medicineAlarmTimer = activeAlarmInterval = null;
@@ -1292,6 +1460,7 @@ async function onUser(user) {
   listenToProfile(user);
   listenToDocuments();
   listenToMedicines();
+  listenToExpenses();
   renderDashboardUI();
   renderAIUserContext();
   loadKnowledge().catch(console.error);
@@ -1326,16 +1495,320 @@ window.MedVault = { supabase, config: SUPABASE_CONFIG, getCurrentUser: () => cur
 
 initializeMedVault();
 
-function openSection(sectionId) {
-  document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
+/* =========================================================
+   MEDVAULT — EXPENSE ENGINE (SUPABASE INTEGRATION)
+   ========================================================= */
 
-  const targetSection = document.getElementById(sectionId);
-  if (targetSection) {
-    targetSection.classList.add('active');
+let userExpenses = [];
+let unsubscribeExpenses = null;
+
+function normalizeExpense(e) {
+  return {
+    id: e.id,
+    userId: e.user_id,
+    category: e.category || "Other",
+    hospitalName: e.hospital_name || "—",
+    amount: parseFloat(e.amount || 0),
+    expenseDate: e.expense_date || "",
+    isSettled: Boolean(e.is_settled),
+    createdAt: e.created_at
+  };
+}
+
+async function loadExpenses() {
+  if (!currentUser) return;
+
+  const { data, error } = await supabase
+    .from("expenses")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .order("expense_date", { ascending: false });
+
+  if (error) {
+    console.error("Expenses fetch error:", error);
+    toast("Expense Error", errMsg(error), "⚠️");
+    return;
   }
 
-  document.querySelectorAll('.sidebar-nav .nav-item').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('data-target') === sectionId);
-  });
+  userExpenses = (data || []).map(normalizeExpense);
+  renderExpensesUI();
 }
-window.openSection = openSection;
+
+function listenToExpenses() {
+  unsubscribeExpenses?.();
+  loadExpenses();
+
+  const channel = supabase
+    .channel(`expenses-${currentUser.id}`)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "expenses", filter: `user_id=eq.${currentUser.id}` },
+      loadExpenses
+    )
+    .subscribe();
+
+  unsubscribeExpenses = () => supabase.removeChannel(channel);
+}
+
+window.addExpenseEntry = async function (event) {
+  event.preventDefault();
+  if (!currentUser) return toast("Sign In Required", "Please sign in to log expenses.", "🔐");
+
+  const category = $("expCategory")?.value.trim();
+  const hospital_name = $("expHospital")?.value.trim();
+  const expense_date = $("expDate")?.value;
+  const amount = parseFloat($("expAmount")?.value || 0);
+
+  if (!category || !hospital_name || !expense_date || isNaN(amount) || amount < 0) {
+    return toast("Invalid Form", "Please fill in all required fields accurately.", "⚠️");
+  }
+
+  const btn = $("expSubmitBtn");
+  btn?.setAttribute("disabled", "true");
+
+  try {
+    const { data, error } = await supabase
+      .from("expenses")
+      .insert({
+        user_id: currentUser.id,
+        category,
+        hospital_name,
+        expense_date,
+        amount,
+        is_settled: false
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    userExpenses.unshift(normalizeExpense(data));
+    renderExpensesUI();
+    $("expenseForm")?.reset();
+    toast("Expense Logged", `₹${amount.toFixed(2)} added for ${category}.`, "💰");
+  } catch (err) {
+    console.error("Failed adding expense:", err);
+    toast("Insert Failed", errMsg(err), "⚠️");
+  } finally {
+    btn?.removeAttribute("disabled");
+  }
+};
+
+window.toggleExpenseSettled = async function (id) {
+  const item = userExpenses.find(x => x.id === id);
+  if (!item || !currentUser) return;
+
+  const nextStatus = !item.isSettled;
+
+  try {
+    const { data, error } = await supabase
+      .from("expenses")
+      .update({ is_settled: nextStatus })
+      .eq("id", id)
+      .eq("user_id", currentUser.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    const idx = userExpenses.findIndex(x => x.id === id);
+    if (idx >= 0) userExpenses[idx] = normalizeExpense(data);
+    renderExpensesUI();
+  } catch (err) {
+    console.error("Failed updating settlement status:", err);
+    toast("Update Error", errMsg(err), "⚠️");
+  }
+};
+
+window.deleteExpenseEntry = async function (id) {
+  const item = userExpenses.find(x => x.id === id);
+  if (!item || !currentUser || !confirm(`Delete expense of ₹${item.amount.toFixed(2)}?`)) return;
+
+  try {
+    const { error } = await supabase
+      .from("expenses")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", currentUser.id);
+
+    if (error) throw error;
+
+    userExpenses = userExpenses.filter(x => x.id !== id);
+    renderExpensesUI();
+    toast("Expense Removed", "Ledger updated.", "🗑️");
+  } catch (err) {
+    console.error("Failed deleting expense:", err);
+    toast("Delete Failed", errMsg(err), "⚠️");
+  }
+};
+
+function renderExpensesUI() {
+  const tbody = $("expenseTableBody");
+  if (!tbody) return;
+
+  let totalSum = 0;
+  let paidSum = 0;
+  let paidCount = 0;
+  let pendingSum = 0;
+  let pendingCount = 0;
+
+  userExpenses.forEach(exp => {
+    totalSum += exp.amount;
+    if (exp.isSettled) {
+      paidSum += exp.amount;
+      paidCount++;
+    } else {
+      pendingSum += exp.amount;
+      pendingCount++;
+    }
+  });
+
+  const formatCurrency = (val) => `₹${val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  if ($("expenseTotalAmount")) $("expenseTotalAmount").textContent = formatCurrency(totalSum);
+  if ($("expensePaidCount")) $("expensePaidCount").textContent = paidCount;
+  if ($("expensePaidSum")) $("expensePaidSum").textContent = `${formatCurrency(paidSum)} settled`;
+  if ($("expensePendingCount")) $("expensePendingCount").textContent = pendingCount;
+  if ($("expensePendingSum")) $("expensePendingSum").textContent = `${formatCurrency(pendingSum)} pending`;
+  if ($("excelGrandTotal")) $("excelGrandTotal").textContent = formatCurrency(totalSum);
+
+  if (!userExpenses.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
+          No expense records found. Add your first medical entry above.
+        </td>
+      </tr>`;
+    return;
+  }
+
+  tbody.innerHTML = userExpenses.map(exp => `
+    <tr class="${exp.isSettled ? "completed" : ""}">
+      <td style="text-align: center;">
+        <button type="button" class="excel-check-btn ${exp.isSettled ? "checked" : ""}" onclick="toggleExpenseSettled('${esc(exp.id)}')">
+          ${exp.isSettled ? "✓" : ""}
+        </button>
+      </td>
+      <td><strong>${esc(exp.category)}</strong></td>
+      <td>${esc(exp.hospitalName)}</td>
+      <td>${formatDate(exp.expenseDate)}</td>
+      <td class="mono font-bold">₹${exp.amount.toFixed(2)}</td>
+      <td style="text-align: center;">
+        <button type="button" class="btn-del" onclick="deleteExpenseEntry('${esc(exp.id)}')">🗑</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+let dynamicRowCounter = 0;
+
+window.generateDynamicRows = function () {
+  const inputEl = document.getElementById("rowCountInput");
+  const tableBody = document.getElementById("expenseTableBody");
+
+  if (!tableBody) return;
+
+  const rawCount = inputEl ? inputEl.value : 5;
+  const count = parseInt(rawCount, 10);
+
+  if (isNaN(count) || count < 1) {
+    alert("Please enter a valid number of rows (minimum 1).");
+    return;
+  }
+
+  for (let i = 0; i < count; i++) {
+    dynamicRowCounter++;
+    const rowId = `row_${dynamicRowCounter}`;
+
+    const tr = document.createElement("tr");
+    tr.id = rowId;
+    tr.className = "dynamic-table-row";
+
+    const todayDate = new Date().toISOString().split("T")[0];
+
+    tr.innerHTML = `
+      <td style="text-align: center;">
+        <input type="checkbox" class="row-checkbox" onchange="recalculateExpenseTotals()">
+      </td>
+      <td>
+        <select class="row-category">
+          <option value="Medicine">Medicine</option>
+          <option value="Consultation">Consultation</option>
+          <option value="Lab Test / Scan">Lab Test / Scan</option>
+          <option value="Hospitalization">Hospitalization</option>
+          <option value="Surgery">Surgery</option>
+          <option value="Other" selected>Other</option>
+        </select>
+      </td>
+      <td>
+        <input type="text" class="row-hospital" placeholder="Hospital / Pharmacy / Item">
+      </td>
+      <td>
+        <input type="date" class="row-date" value="${todayDate}">
+      </td>
+      <td>
+        <input type="number" class="row-amount" step="0.01" min="0" placeholder="0.00" oninput="recalculateExpenseTotals()">
+      </td>
+      <td style="text-align: center;">
+        <button type="button" class="btn-table-delete" onclick="removeExpenseRow('${rowId}')" title="Delete Row">🗑️</button>
+      </td>
+    `;
+
+    tableBody.appendChild(tr);
+  }
+
+  recalculateExpenseTotals();
+};
+
+window.appendSingleRow = function () {
+  const inputEl = document.getElementById("rowCountInput");
+  if (inputEl) inputEl.value = 1;
+  window.generateDynamicRows();
+};
+
+window.removeExpenseRow = function (rowId) {
+  const row = document.getElementById(rowId);
+  if (row) {
+    row.remove();
+    recalculateExpenseTotals();
+  }
+};
+
+window.recalculateExpenseTotals = function () {
+  const rows = document.querySelectorAll("#expenseTableBody tr");
+
+  let grandTotal = 0;
+  let paidSum = 0;
+  let pendingSum = 0;
+
+  let paidCount = 0;
+  let pendingCount = 0;
+
+  rows.forEach((row) => {
+    const isChecked = row.querySelector(".row-checkbox")?.checked || false;
+    const amountVal = parseFloat(row.querySelector(".row-amount")?.value) || 0;
+
+    grandTotal += amountVal;
+
+    if (isChecked) {
+      paidSum += amountVal;
+      paidCount++;
+    } else {
+      pendingSum += amountVal;
+      pendingCount++;
+    }
+  });
+
+  if ($("expenseTotalAmount")) $("expenseTotalAmount").textContent = `₹${grandTotal.toFixed(2)}`;
+  if ($("expensePaidCount")) $("expensePaidCount").textContent = paidCount;
+  if ($("expensePaidSum")) $("expensePaidSum").textContent = `₹${paidSum.toFixed(2)} settled`;
+  if ($("expensePendingCount")) $("expensePendingCount").textContent = pendingCount;
+  if ($("expensePendingSum")) $("expensePendingSum").textContent = `₹${pendingSum.toFixed(2)} pending`;
+  if ($("excelGrandTotal")) $("excelGrandTotal").textContent = `₹${grandTotal.toFixed(2)}`;
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+  if (document.getElementById("expenseTableBody")) {
+    window.generateDynamicRows();
+  }
+});
