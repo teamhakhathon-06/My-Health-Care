@@ -2,7 +2,7 @@
    MEDVAULT PWA SERVICE WORKER
    ========================================================= */
 
-const CACHE_NAME = "medvault-shell-v5";
+const CACHE_NAME = "medvault-shell-v6";
 
 const APP_SHELL = [
   "./",
