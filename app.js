@@ -404,7 +404,7 @@ async function uploadToSupabase(file, meta = {}, progress) {
   uploadInProgress = true;
   try {
     progress?.(10, "Preparing secure upload...");
-    const path = storagePath(currentUser.id, meta.documentId || crypto.randomUUID(), file);
+    const path = normalizeStoragePath(meta.storagePath) || storagePath(currentUser.id, meta.documentId || crypto.randomUUID(), file);
     progress?.(25, "Uploading medical document...");
     const { data, error } = await supabase.storage.from(SUPABASE_CONFIG.bucket).upload(path, file, { cacheControl: "3600", contentType: file.type || "application/octet-stream", upsert: false });
     if (error) throw error;
@@ -495,10 +495,14 @@ $("screenUploadForm")?.addEventListener("submit", async e => {
       return;
     }
 
-    const storage = await uploadToSupabase(selectedScreenFile, { documentId: docId }, (p, m) => { 
+    const storage = await uploadToSupabase(selectedScreenFile, { documentId: docId, storagePath: path }, (p, m) => { 
       if (fill) fill.style.width = `${p}%`; 
       if (text) text.textContent = m; 
     });
+
+    // Keep the database record synchronized with the exact object path returned by Storage.
+    record.storage_path = storage.storagePath;
+    record.supabase_storage_path = storage.storagePath;
 
     const r = await supabase.from("documents").insert(record).select().single();
     if (r.error) { 
@@ -518,6 +522,26 @@ $("screenUploadForm")?.addEventListener("submit", async e => {
     resetUpload();
   } catch (e) {
     console.error(e);
+    const networkFailure = /failed to fetch|network|offline|timeout|load failed|connection|internet|err_internet/i.test(errMsg(e));
+    if (networkFailure && currentUser) {
+      try {
+        await saveDocumentOffline(record, selectedScreenFile);
+        await queueOfflineAction("ADD_DOCUMENT", { storagePath: path, record, fileBlob: selectedScreenFile });
+        const localDoc = normalizeDocument(record);
+        userDocuments = userDocuments.filter(x => x.id !== localDoc.id);
+        userDocuments.unshift(localDoc);
+        renderDocumentsUI();
+        updateCategoryCounts();
+        renderDashboardUI();
+        renderAIUserContext();
+        toast("Saved Offline", `${title} is stored on this device and will upload automatically when the connection is restored.`, "📶");
+        $("screenUploadForm")?.reset();
+        resetUpload();
+        return;
+      } catch (offlineError) {
+        console.error("Offline document fallback failed:", offlineError);
+      }
+    }
     toast("Upload Failed", errMsg(e), "⚠️");
     if (text) text.textContent = errMsg(e);
   } finally {
@@ -547,142 +571,158 @@ async function downloadBlobFromStorage(path) {
   return result.data;
 }
 
+async function downloadBlobWithRecovery(doc) {
+  const paths = [];
+  const addPath = value => {
+    const p = normalizeStoragePath(value);
+    if (p && !paths.includes(p)) paths.push(p);
+  };
+  addPath(doc.storagePath);
+  addPath(doc.supabaseStoragePath);
+
+  let lastError = null;
+
+  // 1) Try the exact path using authenticated Storage.download().
+  for (const path of paths) {
+    try {
+      const result = await supabase.storage.from(SUPABASE_CONFIG.bucket).download(path);
+      if (!result.error && result.data instanceof Blob) {
+        return { blob: result.data, path };
+      }
+      lastError = result.error || new Error("Storage returned no document data.");
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  // 2) Recovery for older records whose timestamp/path differs from the
+  // actual Storage object. Search only inside this user's document folder.
+  if (currentUser && doc.id) {
+    const folder = `users/${currentUser.id}/${doc.id}`;
+    try {
+      const listed = await supabase.storage
+        .from(SUPABASE_CONFIG.bucket)
+        .list(folder, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+
+      if (!listed.error && Array.isArray(listed.data)) {
+        const original = String(doc.originalName || doc.name || "").toLowerCase();
+        const expectedLeaf = paths[0]?.split("/").pop()?.toLowerCase() || "";
+        const candidate = listed.data.find(item => {
+          const name = String(item?.name || "").toLowerCase();
+          return name === expectedLeaf ||
+                 (original && (name === original || name.endsWith(`-${original}`))) ||
+                 name.endsWith(`-${String(doc.originalName || "").toLowerCase()}`);
+        }) || listed.data[0];
+
+        if (candidate?.name) {
+          const recoveredPath = `${folder}/${candidate.name}`;
+          const result = await supabase.storage
+            .from(SUPABASE_CONFIG.bucket)
+            .download(recoveredPath);
+          if (!result.error && result.data instanceof Blob) {
+            console.warn("Recovered document using Storage folder scan:", recoveredPath);
+            return { blob: result.data, path: recoveredPath };
+          }
+          lastError = result.error || lastError;
+        }
+      } else if (listed.error) {
+        lastError = listed.error;
+      }
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  throw lastError || new Error("Document object not found in Supabase Storage.");
+}
+
+function triggerBrowserDownload(blob, filename) {
+  const safeFilename = filename || "medical-document";
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = safeFilename;
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.appendChild(link);
+
+  // Standard download path. This works on desktop and modern Android browsers.
+  link.click();
+
+  // Mobile/PWA fallback: keep a visible/openable copy available if the browser
+  // ignores the download attribute for Blob URLs.
+  setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(blobUrl);
+  }, 15000);
+}
+
 window.downloadDocumentRecord = async function (id) {
-
   const d = userDocuments.find(x => x.id === id);
-
-  if (!currentUser) {
-    return toast(
-      "Download Error",
-      "Please sign in again.",
-      "⚠️"
-    );
-  }
-
-  if (!d) {
-    return toast(
-      "Download Error",
-      "Document record was not found.",
-      "⚠️"
-    );
-  }
-
-  const targetPath = normalizeStoragePath(
-    d.storagePath ||
-    d.supabaseStoragePath ||
-    ""
-  );
-
-  if (!targetPath) {
-    return toast(
-      "Download Error",
-      "Document storage path is missing.",
-      "⚠️"
-    );
-  }
+  if (!currentUser) return toast("Download Error", "Please sign in again.", "⚠️");
+  if (!d) return toast("Download Error", "Document record was not found.", "⚠️");
 
   try {
+    console.log("📥 Downloading document:", {
+      id: d.id,
+      bucket: SUPABASE_CONFIG.bucket,
+      storagePath: d.storagePath,
+      supabaseStoragePath: d.supabaseStoragePath,
+      name: d.originalName || d.name,
+      online: navigator.onLine
+    });
 
-    console.log("📥 Downloading document:");
-    console.log("ID:", d.id);
-    console.log("Bucket:", SUPABASE_CONFIG.bucket);
-    console.log("Path:", targetPath);
-    console.log("Name:", d.originalName || d.name);
+    // Always check IndexedDB first. navigator.onLine is only a hint and may
+    // remain true even when the network is actually unavailable.
+    const offlineDoc = await getOfflineDocument(id);
+    if (offlineDoc?.fileBlob instanceof Blob) {
+      triggerBrowserDownload(offlineDoc.fileBlob, d.originalName || d.name);
+      toast("Download Ready", "Using the copy stored on this device.", "📱");
+      return;
+    }
 
-    toast(
-      "Preparing Download",
-      "Fetching your secure document...",
-      "☁️"
-    );
+    if (!navigator.onLine) {
+      return toast("Offline Access Unavailable", "This document has not been cached on this device yet. Connect once to download it for offline use.", "📶");
+    }
 
-    /*
-     * DIRECT AUTHENTICATED STORAGE DOWNLOAD
-     *
-     * Do not create a signed URL first.
-     */
-    const { data, error } =
-      await supabase.storage
+    toast("Preparing Download", "Fetching your secure document...", "☁️");
+
+    let result;
+    try {
+      result = await downloadBlobWithRecovery(d);
+    } catch (directError) {
+      // Signed URL fallback is useful on browsers where the authenticated
+      // download endpoint behaves differently, especially on mobile.
+      console.warn("Authenticated download failed; trying signed URL:", directError);
+      const targetPath = normalizeStoragePath(d.storagePath || d.supabaseStoragePath || "");
+      if (!targetPath) throw directError;
+
+      const signed = await supabase.storage
         .from(SUPABASE_CONFIG.bucket)
-        .download(targetPath);
+        .createSignedUrl(targetPath, SUPABASE_CONFIG.signedUrlExpiry);
+      if (signed.error || !signed.data?.signedUrl) throw directError;
 
-    if (error) {
-      console.error(
-        "❌ Supabase Storage download error:",
-        error
-      );
-
-      throw error;
+      const response = await fetch(signed.data.signedUrl, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Document download failed (HTTP ${response.status}).`);
+      result = { blob: await response.blob(), path: targetPath };
     }
 
-    if (!data) {
-      throw new Error(
-        "Supabase returned no document data."
-      );
+    // Cache the actual successful Blob so this exact device can use it offline.
+    await saveDocumentOffline({ ...d, storagePath: result.path, supabase_storage_path: result.path }, result.blob);
+
+    // If an old DB record contained a stale timestamp/path, keep the in-memory
+    // record corrected for this session. The next upload/update can persist it.
+    if (result.path && result.path !== d.storagePath) {
+      d.storagePath = result.path;
+      d.supabaseStoragePath = result.path;
     }
 
-    /*
-     * Create local browser URL.
-     */
-    const blobUrl =
-      URL.createObjectURL(data);
-
-    /*
-     * Preserve the original filename.
-     */
-    const filename =
-      d.originalName ||
-      d.name ||
-      "medical-document";
-
-    /*
-     * Mobile-friendly download.
-     */
-    const link =
-      document.createElement("a");
-
-    link.href = blobUrl;
-    link.download = filename;
-    link.rel = "noopener";
-    link.style.display = "none";
-
-    document.body.appendChild(link);
-
-    link.click();
-
-    /*
-     * Cleanup.
-     */
-    setTimeout(() => {
-
-      link.remove();
-
-      URL.revokeObjectURL(blobUrl);
-
-    }, 10000);
-
-    toast(
-      "Download Ready",
-      filename,
-      "✅"
-    );
-
+    triggerBrowserDownload(result.blob, d.originalName || d.name);
+    toast("Download Ready", d.originalName || d.name || "medical-document", "✅");
   } catch (error) {
-
-    console.error(
-      "❌ Document download failed:",
-      error
-    );
-
-    const message =
-      error?.message ||
-      error?.error_description ||
-      "Unable to download document.";
-
-    toast(
-      "Download Failed",
-      message,
-      "⚠️"
-    );
+    console.error("❌ Document download failed:", error);
+    const message = error?.message || error?.error_description || "Unable to download document.";
+    toast("Download Failed", message, "⚠️");
   }
 };
 
