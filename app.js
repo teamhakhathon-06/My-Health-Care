@@ -547,73 +547,142 @@ async function downloadBlobFromStorage(path) {
   return result.data;
 }
 
-window.downloadDocumentRecord = async id => {
+window.downloadDocumentRecord = async function (id) {
+
   const d = userDocuments.find(x => x.id === id);
-  if (!currentUser || !d) return toast("Download Error", "Document not found.", "⚠️");
-  
-  // Resolve path safely as a string
-  const targetPath = normalizeStoragePath(d.storagePath || d.supabaseStoragePath || "");
+
+  if (!currentUser) {
+    return toast(
+      "Download Error",
+      "Please sign in again.",
+      "⚠️"
+    );
+  }
+
+  if (!d) {
+    return toast(
+      "Download Error",
+      "Document record was not found.",
+      "⚠️"
+    );
+  }
+
+  const targetPath = normalizeStoragePath(
+    d.storagePath ||
+    d.supabaseStoragePath ||
+    ""
+  );
 
   if (!targetPath) {
-    return toast("Download Error", "Document storage path is missing or invalid.", "⚠️");
+    return toast(
+      "Download Error",
+      "Document storage path is missing.",
+      "⚠️"
+    );
   }
-  
+
   try {
-    // If offline, try serving from local IndexedDB cache
-    if (!navigator.onLine) {
-      const offlineDoc = await getOfflineDocument(id);
-      if (offlineDoc && offlineDoc.fileBlob) {
-        const fileUrl = URL.createObjectURL(offlineDoc.fileBlob);
-        const a = document.createElement("a");
-        a.href = fileUrl;
-        a.download = d.originalName || d.name || "medical-document";
-        a.target = "_blank";
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(fileUrl), 5000);
-        toast("Offline Access", "Opening document from local storage.", "📄");
-        return;
-      } else {
-        return toast("Offline Error", "This document wasn't cached for offline viewing.", "📶");
-      }
-    }
 
-    // Online Download from Supabase
-    toast("Preparing Download", "Fetching your secure document...", "☁️");
+    console.log("📥 Downloading document:");
+    console.log("ID:", d.id);
+    console.log("Bucket:", SUPABASE_CONFIG.bucket);
+    console.log("Path:", targetPath);
+    console.log("Name:", d.originalName || d.name);
 
-    let blob = null;
-    let signedUrl = null;
+    toast(
+      "Preparing Download",
+      "Fetching your secure document...",
+      "☁️"
+    );
 
-    // First try a short-lived signed URL. If Supabase rejects it (for example
-    // because an older record contains a stale path), fall back to authenticated
-    // Storage.download(), which is more reliable for private buckets.
-    try {
-      const signed = await supabase.storage
+    /*
+     * DIRECT AUTHENTICATED STORAGE DOWNLOAD
+     *
+     * Do not create a signed URL first.
+     */
+    const { data, error } =
+      await supabase.storage
         .from(SUPABASE_CONFIG.bucket)
-        .createSignedUrl(targetPath, SUPABASE_CONFIG.signedUrlExpiry);
-      if (!signed.error && signed.data?.signedUrl) signedUrl = signed.data.signedUrl;
-    } catch (signedError) {
-      console.warn("Signed URL creation failed; using authenticated download:", signedError);
+        .download(targetPath);
+
+    if (error) {
+      console.error(
+        "❌ Supabase Storage download error:",
+        error
+      );
+
+      throw error;
     }
 
-    if (signedUrl) {
-      const response = await fetch(signedUrl);
-      if (!response.ok) throw Error(`Document download failed (HTTP ${response.status}).`);
-      blob = await response.blob();
-    } else {
-      blob = await downloadBlobFromStorage(targetPath);
+    if (!data) {
+      throw new Error(
+        "Supabase returned no document data."
+      );
     }
 
-    await saveDocumentOffline(d, blob);
-    const fileUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = fileUrl;
-    a.download = d.originalName || d.name || "medical-document";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(fileUrl), 10000);
-  } catch (e) {
-    toast("Download Failed", errMsg(e), "⚠️");
+    /*
+     * Create local browser URL.
+     */
+    const blobUrl =
+      URL.createObjectURL(data);
+
+    /*
+     * Preserve the original filename.
+     */
+    const filename =
+      d.originalName ||
+      d.name ||
+      "medical-document";
+
+    /*
+     * Mobile-friendly download.
+     */
+    const link =
+      document.createElement("a");
+
+    link.href = blobUrl;
+    link.download = filename;
+    link.rel = "noopener";
+    link.style.display = "none";
+
+    document.body.appendChild(link);
+
+    link.click();
+
+    /*
+     * Cleanup.
+     */
+    setTimeout(() => {
+
+      link.remove();
+
+      URL.revokeObjectURL(blobUrl);
+
+    }, 10000);
+
+    toast(
+      "Download Ready",
+      filename,
+      "✅"
+    );
+
+  } catch (error) {
+
+    console.error(
+      "❌ Document download failed:",
+      error
+    );
+
+    const message =
+      error?.message ||
+      error?.error_description ||
+      "Unable to download document.";
+
+    toast(
+      "Download Failed",
+      message,
+      "⚠️"
+    );
   }
 };
 
