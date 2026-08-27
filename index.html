@@ -424,7 +424,11 @@
             <span class="nav-badge orange" id="navMedCount">0</span>
           </button>
 
-          
+          <!-- Inside <nav class="sidebar-nav"> -->
+<button class="nav-item" data-target="expenseTracker">
+  <span class="nav-icon">💰</span>
+  <span>Expense Tracker</span>
+</button>
 
           <div class="nav-section-title">SETTINGS & PRIVACY</div>
 
@@ -707,7 +711,7 @@
             <h1 style="margin-top: 8px;">Upload Medical Report</h1>
             <p>Upload PDF or Image medical files.. (<code>MedVault</code>).</p>
             <div class="secure-upload-note" role="status">
-              🔐 <strong>Secure cloud upload:</strong> MedLedger sends the file through an authenticated storage gateway.
+              🔐 <strong>Secure cloud upload:</strong> MedVault sends the file through an authenticated storage gateway.
             </div>
           </div>
         </div>
@@ -1015,6 +1019,125 @@
 
 </section>
 
+<!-- =======================================================
+     SECTION 7: MEDICAL EXPENSE TRACKER (Supabase Integrated)
+======================================================== -->
+<section class="section" id="expenseTracker">
+  <div class="section-title-row">
+    <div>
+      <span class="eyebrow">FINANCIAL HEALTH</span>
+      <h1>MedVault Expense Tracker</h1>
+      <p>Log medical bills, medications, and hospital visits like an Excel ledger.</p>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="stats-grid" style="margin-bottom: 18px;">
+    <div class="stat-card">
+      <div class="stat-icon-wrap emerald"><span>💰</span></div>
+      <div class="stat-meta">
+        <span class="stat-label">Total Expense</span>
+        <strong class="stat-value" id="expenseTotalAmount">₹0.00</strong>
+        <span class="stat-sub">Auto-calculated sum</span>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon-wrap blue"><span>✅</span></div>
+      <div class="stat-meta">
+        <span class="stat-label">Paid Bills</span>
+        <strong class="stat-value" id="expensePaidCount">0</strong>
+        <span class="stat-sub" id="expensePaidSum">₹0.00 settled</span>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon-wrap orange"><span>⏳</span></div>
+      <div class="stat-meta">
+        <span class="stat-label">Pending Payments</span>
+        <strong class="stat-value" id="expensePendingCount">0</strong>
+        <span class="stat-sub" id="expensePendingSum">₹0.00 pending</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Expense Form Card -->
+  <div class="card" style="margin-bottom: 20px;">
+    <div class="card-header">
+      <h2>Add New Expense Entry</h2>
+    </div>
+    <form id="expenseForm" onsubmit="addExpenseEntry(event)" class="med-form-grid">
+      <div class="input-group">
+        <label for="expCategory">Category *</label>
+        <div class="input-wrapper select-wrapper">
+          <span class="input-icon">🏷️</span>
+          <select id="expCategory" required>
+            <option value="" disabled selected>Select category...</option>
+            <option value="Medicine">Medicine</option>
+            <option value="Consultation">Consultation</option>
+            <option value="Lab Test / Scan">Lab Test / Scan</option>
+            <option value="Hospitalization">Hospitalization</option>
+            <option value="Surgery">Surgery</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="input-group">
+        <label for="expHospital">Hospital / Pharmacy *</label>
+        <div class="input-wrapper">
+          <span class="input-icon">🏥</span>
+          <input type="text" id="expHospital" placeholder="e.g. Apollo Hospital / Local Pharmacy" required>
+        </div>
+      </div>
+      <div class="input-group">
+        <label for="expDate">Date *</label>
+        <div class="input-wrapper">
+          <span class="input-icon">📅</span>
+          <input type="date" id="expDate" required>
+        </div>
+      </div>
+      <div class="input-group">
+        <label for="expAmount">Amount (₹) *</label>
+        <div class="input-wrapper">
+          <span class="input-icon">💵</span>
+          <input type="number" id="expAmount" step="0.01" min="0" placeholder="0.00" required>
+        </div>
+      </div>
+      <div class="form-actions span-2">
+        <button type="submit" id="expSubmitBtn" class="btn btn-primary btn-block">
+          <span>Add Expense Entry</span>
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Excel-Style Table Wrapper -->
+  <div class="card" style="padding: 12px; overflow-x: auto;">
+    <div class="excel-table-container">
+      <table class="excel-table">
+        <thead>
+          <tr>
+            <th style="width: 50px;">Done</th>
+            <th>Category</th>
+            <th>Hospital / Pharmacy</th>
+            <th>Date</th>
+            <th>Amount (₹)</th>
+            <th style="width: 70px; text-align: center;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="expenseTableBody">
+          <!-- Dynamic Supabase rows render here -->
+        </tbody>
+        <tfoot>
+          <tr class="excel-total-row">
+            <td colspan="4" style="text-align: right; font-weight: 800;">GRAND TOTAL:</td>
+            <td id="excelGrandTotal" style="font-weight: 800; color: var(--primary);">₹0.00</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</section>
+
       <!-- =======================================================
            SECTION 6: PROFILE & PRIVACY
       ======================================================== -->
@@ -1148,6 +1271,12 @@
         <span class="icon">⏰</span>
         <small>Alarms</small>
       </button>
+
+      <!-- Inside <nav class="bottom-nav"> -->
+<button type="button" class="bottom-nav-item" data-target="expenseTracker">
+  <span class="icon">💰</span>
+  <small>Expenses</small>
+</button>
 
       <button type="button" class="bottom-nav-item" data-target="profile">
         <span class="icon">👤</span>
