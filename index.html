@@ -913,77 +913,18 @@
 
   <div class="ai-fullpage-layout">
 
-    <!-- AI Sidebar Navigation (ChatGPT-Style Workspace Switcher) -->
-    <aside class="ai-sidebar" id="aiSidebar">
-      <div class="ai-sidebar-header">
-        <button type="button" class="ai-btn-new-chat" id="aiNewChatBtn" onclick="MedVaultAI.newChat()">
-          <span class="icon">＋</span>
-          <span class="lbl">New Chat</span>
-        </button>
-      </div>
-
-      <!-- Feature Mode Switcher -->
-      <div class="ai-mode-switcher">
-        <div class="ai-nav-label">CAPABILITIES</div>
-        <button type="button" class="ai-mode-btn active" data-mode="all" onclick="MedVaultAI.switchMode('all', this)">
-          <span class="icon">💬</span>
-          <span class="lbl">General Assistant</span>
-        </button>
-        <button type="button" class="ai-mode-btn" data-mode="knowledge" onclick="MedVaultAI.switchMode('knowledge', this)">
-          <span class="icon">📚</span>
-          <span class="lbl">Medical Knowledge</span>
-        </button>
-        <button type="button" class="ai-mode-btn" data-mode="medicines" onclick="MedVaultAI.switchMode('medicines', this)">
-          <span class="icon">💊</span>
-          <span class="lbl">Medicine Schedule</span>
-        </button>
-        <button type="button" class="ai-mode-btn" data-mode="records" onclick="MedVaultAI.switchMode('records', this)">
-          <span class="icon">📁</span>
-          <span class="lbl">Health Records</span>
-        </button>
-      </div>
-
-      <!-- Recent Conversations Log -->
-      <div class="ai-chat-history">
-        <div class="ai-nav-label">RECENT CONVERSATIONS</div>
-        <div class="ai-history-list" id="aiHistoryList">
-          <button type="button" class="ai-history-item active">
-            <span class="icon">💬</span>
-            <span class="lbl" id="aiActiveChatLabel">Current Session</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Footer Privacy Status Card -->
-      <div class="ai-sidebar-footer">
-        <div class="ai-privacy-mini">
-          <span class="icon">🔐</span>
-          <div class="txt">
-            <strong>100% On-Device AI</strong>
-            
-          </div>
-        </div>
-      </div>
-    </aside>
-
     <!-- Main Workspace Area -->
     <div class="ai-workspace">
 
       <!-- Workspace Top Toolbar -->
       <header class="ai-workspace-header">
         <div class="header-left">
-          <button type="button" class="ai-toggle-sidebar-btn" id="aiToggleSidebarBtn" onclick="MedVaultAI.toggleSidebar()" title="Toggle AI Sidebar">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="9" y1="3" x2="9" y2="21"></line>
-            </svg>
-          </button>
-          
+      
           <div class="ai-title-group">
             <h1 id="aiCurrentTitle">Ask MedVault</h1>
             <span class="ai-status-badge">
               <span class="ai-status-dot"></span>
-              <span id="aiStatusText">Engine Ready</span>
+              <span id="aiStatusText">Ready AI</span>
             </span>
           </div>
         </div>
@@ -1002,31 +943,31 @@
           <!-- Welcome / Default Screen -->
           <div class="ai-welcome-hero" id="aiWelcomeHero">
             <div class="ai-welcome-badge">✦ MEDVAULT INTELLIGENCE</div>
-            <h2>How can I assist your health today?</h2>
-            <p>Search local medical knowledge, review medicine alarms, or analyze stored health documents offline.</p>
+            <h2>How can I assist you today?</h2>
+            <p>Search medical knowledge, review alarms, or analyze stored documents.</p>
 
             <div class="ai-suggestions-grid" id="aiSuggestionsGrid">
               <button type="button" class="ai-suggestion-card" onclick="MedVaultAI.sendSuggested('What medicines am I currently taking?')">
                 <span class="card-icon">💊</span>
                 <strong>My Medicines</strong>
-                <p>Check scheduled times and active daily dosages</p>
+                <p>Check scheduled times and active dosages.</p>
               </button>
 
               <button type="button" class="ai-suggestion-card" onclick="MedVaultAI.sendSuggested('How many medical reports do I have uploaded?')">
                 <span class="card-icon">📄</span>
                 <strong>My Health Records</strong>
-                <p>Summarize uploaded lab tests and doctors' notes</p>
+                <p>Summarize uploaded lab tests and more.</p>
               </button>
 
-              <button type="button" class="ai-suggestion-card" onclick="MedVaultAI.sendSuggested('What is blood pressure?')">
+              <button type="button" class="ai-suggestion-card" onclick="MedVaultAI.sendSuggested('What is High pressure?')">
                 <span class="card-icon">❤️</span>
-                <strong>Explain Blood Pressure</strong>
+                <strong>What is High pressure?</strong>
                 <p>Learn physiological terms & reference ranges</p>
               </button>
 
               <button type="button" class="ai-suggestion-card" onclick="MedVaultAI.sendSuggested('What is HbA1c test?')">
                 <span class="card-icon">🧪</span>
-                <strong>Explain HbA1c</strong>
+                <strong>What is blood-test?</strong>
                 <p>Understand blood sugar monitoring standards</p>
               </button>
             </div>
@@ -1053,7 +994,7 @@
             id="aiInput"
             rows="1"
             maxlength="1000"
-            placeholder="Ask MedVault about your health or medicines..."
+            placeholder="Ask MedVault ai..."
             autocomplete="off"
             onkeydown="MedVaultAI.handleKeyDown(event)"
           ></textarea>
@@ -1087,7 +1028,7 @@
             <span class="eyebrow">PATIENT PROFILE</span>
             <h1>Patient Details</h1>
             <p>
-  Manage your personal health information and review your MedLedger account details.
+  Manage your personal health information and review your MedVault account details.
 </p>
           </div>
         </div>
