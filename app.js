@@ -79,7 +79,8 @@ let dbPromise = null;
 function initIndexedDB() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open("MedVaultOfflineDB", 1);
+    // Upgraded database version to 2 to support offline documents
+    const req = indexedDB.open("MedVaultOfflineDB", 2);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains("medicines")) {
@@ -88,11 +89,37 @@ function initIndexedDB() {
       if (!db.objectStoreNames.contains("sync_queue")) {
         db.createObjectStore("sync_queue", { keyPath: "id", autoIncrement: true });
       }
+      // NEW: Store for local document files (blobs) when offline
+      if (!db.objectStoreNames.contains("offline_documents")) {
+        db.createObjectStore("offline_documents", { keyPath: "id" });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
   return dbPromise;
+}
+
+// NEW: Save document file blob locally
+async function saveDocumentOffline(docRecord, fileBlob) {
+  const db = await initIndexedDB();
+  const tx = db.transaction("offline_documents", "readwrite");
+  tx.objectStore("offline_documents").put({
+    id: docRecord.id,
+    record: docRecord,
+    fileBlob: fileBlob
+  });
+}
+
+// NEW: Get local document file blob
+async function getOfflineDocument(id) {
+  const db = await initIndexedDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction("offline_documents", "readonly");
+    const req = tx.objectStore("offline_documents").get(id);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => resolve(null);
+  });
 }
 
 async function saveMedicineOffline(med) {
@@ -137,13 +164,30 @@ async function syncOfflineData() {
           await supabase.from("medicines").update(item.data.changes).eq("id", item.data.id).eq("owner_id", currentUser.id);
         } else if (item.actionType === "DELETE_MEDICINE") {
           await supabase.from("medicines").delete().eq("id", item.data.id).eq("owner_id", currentUser.id);
+        } else if (item.actionType === "ADD_DOCUMENT") {
+          // NEW: Upload queued offline document to Supabase Storage & DB
+          try {
+            const path = item.data.storagePath;
+            const fileBlob = item.data.fileBlob;
+            const record = item.data.record;
+            
+            await supabase.storage.from(SUPABASE_CONFIG.bucket).upload(path, fileBlob, { 
+              cacheControl: "3600", 
+              contentType: record.type, 
+              upsert: true 
+            });
+            await supabase.from("documents").upsert(record);
+          } catch (err) {
+            console.error("Failed syncing offline document:", err);
+          }
         }
       }
 
       const clearTx = db.transaction("sync_queue", "readwrite");
       clearTx.objectStore("sync_queue").clear();
-      toast("Sync Complete", "Offline logs are updated with Supabase cloud.", "✅");
+      toast("Sync Complete", "Offline logs and files updated with Supabase cloud.", "✅");
       loadMedicines();
+      loadDocuments();
     };
   } catch (e) {
     console.error("Sync failed:", e);
@@ -151,7 +195,6 @@ async function syncOfflineData() {
 }
 
 window.addEventListener("online", syncOfflineData);
-
 /* ================= BACKGROUND ALARMS & NOTIFICATIONS ================= */
 async function requestNotificationPermission() {
   if ("Notification" in window && Notification.permission === "default") {
@@ -394,14 +437,73 @@ $("screenUploadForm")?.addEventListener("submit", async e => {
   e.preventDefault();
   if (!currentUser) return toast("Sign In Required", "Please sign in first.", "🔐");
   if (!selectedScreenFile) return toast("No Document Selected", "Please select a document.", "📄");
-  const title = String($("screenDocTitle")?.value || selectedScreenFile.name).trim().slice(0, 240), category = String($("screenDocCategory")?.value || "Other").trim().slice(0, 80) || "Other", recordDate = String($("screenDocDate")?.value || today()).trim(), doctor = String($("screenDocDoctor")?.value || "").trim().slice(0, 240), button = $("screenSubmitBtn"), progress = $("screenUploadProgress"), fill = $("screenProgressFill"), text = $("screenProgressText"), docId = crypto.randomUUID();
+  
+  const title = String($("screenDocTitle")?.value || selectedScreenFile.name).trim().slice(0, 240);
+  const category = String($("screenDocCategory")?.value || "Other").trim().slice(0, 80) || "Other";
+  const recordDate = String($("screenDocDate")?.value || today()).trim();
+  const doctor = String($("screenDocDoctor")?.value || "").trim().slice(0, 240);
+  const button = $("screenSubmitBtn");
+  const progress = $("screenUploadProgress");
+  const fill = $("screenProgressFill");
+  const text = $("screenProgressText");
+  const docId = crypto.randomUUID();
+
   button?.setAttribute("disabled", "true");
   progress?.classList.remove("hidden");
+
+  // Create record structure
+  const path = storagePath(currentUser.id, docId, selectedScreenFile);
+  const record = { 
+    id: docId, 
+    owner_id: currentUser.id, 
+    name: title, 
+    original_name: selectedScreenFile.name, 
+    type: selectedScreenFile.type || "application/pdf", 
+    size: selectedScreenFile.size, 
+    formatted_size: formatBytes(selectedScreenFile.size), 
+    category, 
+    record_date: recordDate, 
+    doctor, 
+    storage_path: path, 
+    supabase_storage_path: path, 
+    supabase_bucket: SUPABASE_CONFIG.bucket, 
+    storage_backend: "Supabase Storage", 
+    uploaded_at: new Date().toISOString() 
+  };
+
   try {
-    const storage = await uploadToSupabase(selectedScreenFile, { documentId: docId }, (p, m) => { if (fill) fill.style.width = `${p}%`; if (text) text.textContent = m; });
-    const record = { id: docId, owner_id: currentUser.id, name: title, original_name: selectedScreenFile.name, type: selectedScreenFile.type || storage.contentType, size: selectedScreenFile.size, formatted_size: formatBytes(selectedScreenFile.size), category, record_date: recordDate, doctor, storage_path: storage.storagePath, supabase_storage_path: storage.storagePath, supabase_bucket: SUPABASE_CONFIG.bucket, storage_backend: "Supabase Storage", uploaded_at: new Date().toISOString() };
+    if (!navigator.onLine) {
+      // OFFLINE HANDLER: Cache document locally and queue sync
+      await saveDocumentOffline(record, selectedScreenFile);
+      await queueOfflineAction("ADD_DOCUMENT", { storagePath: path, record, fileBlob: selectedScreenFile });
+      
+      userDocuments.unshift(normalizeDocument(record));
+      renderDocumentsUI();
+      updateCategoryCounts();
+      renderDashboardUI();
+      renderAIUserContext();
+      
+      toast("Saved Offline", `${title} stored locally. Will upload when back online.`, "📶");
+      $("screenUploadForm")?.reset();
+      resetUpload();
+      return;
+    }
+
+    // ONLINE HANDLER: Standard upload to Supabase
+    const storage = await uploadToSupabase(selectedScreenFile, { documentId: docId }, (p, m) => { 
+      if (fill) fill.style.width = `${p}%`; 
+      if (text) text.textContent = m; 
+    });
+
     const r = await supabase.from("documents").insert(record).select().single();
-    if (r.error) { await supabase.storage.from(SUPABASE_CONFIG.bucket).remove([storage.storagePath]); throw r.error; }
+    if (r.error) { 
+      await supabase.storage.from(SUPABASE_CONFIG.bucket).remove([storage.storagePath]); 
+      throw r.error; 
+    }
+
+    // Also cache online uploads locally for seamless offline reading later
+    await saveDocumentOffline(record, selectedScreenFile);
+
     userDocuments.unshift(normalizeDocument(r.data));
     renderDocumentsUI();
     updateCategoryCounts();
@@ -423,10 +525,37 @@ $("screenUploadForm")?.addEventListener("submit", async e => {
 window.downloadDocumentRecord = async id => {
   const d = userDocuments.find(x => x.id === id);
   if (!currentUser || !d) return toast("Download Error", "Document not found.", "⚠️");
+  
   try {
+    // If offline, try serving from local IndexedDB cache
+    if (!navigator.onLine) {
+      const offlineDoc = await getOfflineDocument(id);
+      if (offlineDoc && offlineDoc.fileBlob) {
+        const fileUrl = URL.createObjectURL(offlineDoc.fileBlob);
+        const a = document.createElement("a");
+        a.href = fileUrl;
+        a.download = d.originalName || d.name || "medical-document";
+        a.target = "_blank";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(fileUrl), 5000);
+        toast("Offline Access", "Opening document from local storage.", "📄");
+        return;
+      } else {
+        return toast("Offline Error", "This document wasn't cached for offline viewing.", "📶");
+      }
+    }
+
+    // Online Download from Supabase
     toast("Preparing Download", "Creating secure document link...", "☁️");
     const r = await supabase.storage.from(SUPABASE_CONFIG.bucket).createSignedUrl(d.storagePath, SUPABASE_CONFIG.signedUrlExpiry);
     if (r.error) throw r.error;
+    
+    // Fetch and cache the file locally for future offline access
+    fetch(r.data.signedUrl)
+      .then(res => res.blob())
+      .then(blob => saveDocumentOffline(d, blob))
+      .catch(err => console.warn("Failed caching downloaded doc offline:", err));
+
     const a = document.createElement("a");
     a.href = r.data.signedUrl;
     a.download = d.originalName || d.name || "medical-document";
