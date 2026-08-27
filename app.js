@@ -2,6 +2,7 @@
    MedVault — Complete app.js
    Supabase Auth + Database + Storage + Medicines + Alarms
    + Local MedVault AI using ./data.json
+   + Offline-First IndexedDB Sync & Background Notifications
    ========================================================= */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
@@ -70,6 +71,120 @@ function authError(e) {
   if (/already registered|already exists/i.test(m)) return "This email is already registered.";
   if (/email.*invalid/i.test(m)) return "Please enter a valid email address.";
   return m || "Authentication failed.";
+}
+
+/* ================= OFFLINE INDEXEDDB & SERVICE WORKER SYNC ================= */
+let dbPromise = null;
+
+function initIndexedDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open("MedVaultOfflineDB", 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains("medicines")) {
+        db.createObjectStore("medicines", { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("sync_queue")) {
+        db.createObjectStore("sync_queue", { keyPath: "id", autoIncrement: true });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return dbPromise;
+}
+
+async function saveMedicineOffline(med) {
+  const db = await initIndexedDB();
+  const tx = db.transaction("medicines", "readwrite");
+  tx.objectStore("medicines").put(med);
+}
+
+async function getOfflineMedicines() {
+  const db = await initIndexedDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction("medicines", "readonly");
+    const req = tx.objectStore("medicines").getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => resolve([]);
+  });
+}
+
+async function queueOfflineAction(actionType, data) {
+  const db = await initIndexedDB();
+  const tx = db.transaction("sync_queue", "readwrite");
+  tx.objectStore("sync_queue").add({ actionType, data, timestamp: Date.now() });
+}
+
+async function syncOfflineData() {
+  if (!navigator.onLine || !currentUser) return;
+  try {
+    const db = await initIndexedDB();
+    const tx = db.transaction("sync_queue", "readonly");
+    const req = tx.objectStore("sync_queue").getAll();
+
+    req.onsuccess = async () => {
+      const items = req.result || [];
+      if (!items.length) return;
+
+      toast("Syncing Data", "Re-connected to network. Syncing offline updates...", "🔄");
+
+      for (const item of items) {
+        if (item.actionType === "ADD_MEDICINE") {
+          await supabase.from("medicines").upsert(item.data);
+        } else if (item.actionType === "UPDATE_MEDICINE") {
+          await supabase.from("medicines").update(item.data.changes).eq("id", item.data.id).eq("owner_id", currentUser.id);
+        } else if (item.actionType === "DELETE_MEDICINE") {
+          await supabase.from("medicines").delete().eq("id", item.data.id).eq("owner_id", currentUser.id);
+        }
+      }
+
+      const clearTx = db.transaction("sync_queue", "readwrite");
+      clearTx.objectStore("sync_queue").clear();
+      toast("Sync Complete", "Offline logs are updated with Supabase cloud.", "✅");
+      loadMedicines();
+    };
+  } catch (e) {
+    console.error("Sync failed:", e);
+  }
+}
+
+window.addEventListener("online", syncOfflineData);
+
+/* ================= BACKGROUND ALARMS & NOTIFICATIONS ================= */
+async function requestNotificationPermission() {
+  if ("Notification" in window && Notification.permission === "default") {
+    await Notification.requestPermission();
+  }
+}
+
+async function registerServiceWorker() {
+  if ("serviceWorker" in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.register("./sw.js");
+      console.log("ServiceWorker registered successfully:", registration.scope);
+    } catch (err) {
+      console.error("ServiceWorker registration failed:", err);
+    }
+  }
+}
+
+function triggerSystemNotification(title, body) {
+  if ("Notification" in window && Notification.permission === "granted") {
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification(title, {
+          body,
+          icon: "./icon-192.png",
+          badge: "./icon-192.png",
+          vibrate: [200, 100, 200]
+        });
+      });
+    } else {
+      new Notification(title, { body });
+    }
+  }
 }
 
 /* ================= AUTH ================= */
@@ -158,6 +273,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("sidebarThemeToggle")?.addEventListener("click", toggleTheme);
   updateThemeUI();
   loadKnowledge();
+  requestNotificationPermission();
+  registerServiceWorker();
 });
 
 /* ================= PROFILE ================= */
@@ -383,13 +500,27 @@ window.deleteDocumentRecord = async id => {
 window.filterDocuments = () => { activeSearchQuery = $("docSearchInput")?.value.trim().toLowerCase() || ""; renderDocumentsUI(); };
 window.setCategoryFilter = c => { activeCategoryFilter = c; renderDocumentsUI(); };
 
-/* ================= MEDICINES ================= */
+/* ================= MEDICINES (OFFLINE-FIRST ENABLED) ================= */
 function normalizeMedicine(m) { return { ...m, takenTodayDate: m.taken_today_date || "", enabled: m.enabled !== false }; }
+
 async function loadMedicines() {
   if (!currentUser) return;
+  if (!navigator.onLine) {
+    const offlineMeds = await getOfflineMedicines();
+    userMedicines = offlineMeds.map(normalizeMedicine);
+    renderMedicinesUI();
+    renderDashboardUI();
+    renderAIUserContext();
+    startAlarmScheduler();
+    return;
+  }
   const r = await supabase.from("medicines").select("*").eq("owner_id", currentUser.id).order("time", { ascending: true });
   if (r.error) { toast("Medicine Error", errMsg(r.error), "⚠️"); return; }
   userMedicines = (r.data || []).map(normalizeMedicine);
+  
+  // Cache fetched records locally in IndexedDB
+  userMedicines.forEach(m => saveMedicineOffline(m));
+
   renderMedicinesUI();
   renderDashboardUI();
   renderAIUserContext();
@@ -408,9 +539,28 @@ $("medicineForm")?.addEventListener("submit", async e => {
   if (!currentUser) return;
   const name = $("medicineName")?.value.trim(), instruction = $("medicineInstruction")?.value || "", dosage = $("medicineDosage")?.value.trim() || "", time = $("medicineTime")?.value;
   if (!name || !time) return alert("Enter medicine name and time.");
-  const r = await supabase.from("medicines").insert({ id: crypto.randomUUID(), owner_id: currentUser.id, name, instruction, dosage, time, enabled: true, taken_today_date: "" }).select().single();
+
+  const newMed = { id: crypto.randomUUID(), owner_id: currentUser.id, name, instruction, dosage, time, enabled: true, taken_today_date: "" };
+
+  if (!navigator.onLine) {
+    await saveMedicineOffline(newMed);
+    await queueOfflineAction("ADD_MEDICINE", newMed);
+    userMedicines.push(normalizeMedicine(newMed));
+    userMedicines.sort((a, b) => a.time.localeCompare(b.time));
+    renderMedicinesUI();
+    renderDashboardUI();
+    renderAIUserContext();
+    startAlarmScheduler();
+    $("medicineForm")?.reset();
+    toast("Saved Offline", `${name} cached locally. Will sync when back online.`, "📶");
+    return;
+  }
+
+  const r = await supabase.from("medicines").insert(newMed).select().single();
   if (r.error) return toast("Medicine Error", errMsg(r.error), "⚠️");
-  userMedicines.push(normalizeMedicine(r.data));
+  const normMed = normalizeMedicine(r.data);
+  saveMedicineOffline(normMed);
+  userMedicines.push(normMed);
   userMedicines.sort((a, b) => a.time.localeCompare(b.time));
   renderMedicinesUI();
   renderDashboardUI();
@@ -433,10 +583,25 @@ window.toggleMedicineTaken = async id => {
   const m = userMedicines.find(x => x.id === id);
   if (!m || !currentUser) return;
   const value = m.takenTodayDate === today() ? null : today();
+
+  if (!navigator.onLine) {
+    m.takenTodayDate = value || "";
+    m.taken_today_date = value || "";
+    await saveMedicineOffline(m);
+    await queueOfflineAction("UPDATE_MEDICINE", { id, changes: { taken_today_date: value } });
+    renderMedicinesUI();
+    renderDashboardUI();
+    renderAIUserContext();
+    return;
+  }
+
   const r = await supabase.from("medicines").update({ taken_today_date: value, updated_at: new Date().toISOString() }).eq("id", id).eq("owner_id", currentUser.id).select().single();
   if (r.error) return toast("Medicine Error", errMsg(r.error), "⚠️");
   const i = userMedicines.findIndex(x => x.id === id);
-  if (i >= 0) userMedicines[i] = normalizeMedicine(r.data);
+  if (i >= 0) {
+    userMedicines[i] = normalizeMedicine(r.data);
+    saveMedicineOffline(userMedicines[i]);
+  }
   renderMedicinesUI();
   renderDashboardUI();
   renderAIUserContext();
@@ -445,10 +610,25 @@ window.toggleMedicineTaken = async id => {
 window.toggleMedicineEnabled = async id => {
   const m = userMedicines.find(x => x.id === id);
   if (!m || !currentUser) return;
-  const r = await supabase.from("medicines").update({ enabled: m.enabled === false, updated_at: new Date().toISOString() }).eq("id", id).eq("owner_id", currentUser.id).select().single();
+  const nextStatus = m.enabled === false;
+
+  if (!navigator.onLine) {
+    m.enabled = nextStatus;
+    await saveMedicineOffline(m);
+    await queueOfflineAction("UPDATE_MEDICINE", { id, changes: { enabled: nextStatus } });
+    renderMedicinesUI();
+    renderDashboardUI();
+    renderAIUserContext();
+    return;
+  }
+
+  const r = await supabase.from("medicines").update({ enabled: nextStatus, updated_at: new Date().toISOString() }).eq("id", id).eq("owner_id", currentUser.id).select().single();
   if (r.error) return toast("Medicine Error", errMsg(r.error), "⚠️");
   const i = userMedicines.findIndex(x => x.id === id);
-  if (i >= 0) userMedicines[i] = normalizeMedicine(r.data);
+  if (i >= 0) {
+    userMedicines[i] = normalizeMedicine(r.data);
+    saveMedicineOffline(userMedicines[i]);
+  }
   renderMedicinesUI();
   renderDashboardUI();
   renderAIUserContext();
@@ -457,6 +637,20 @@ window.toggleMedicineEnabled = async id => {
 window.deleteMedicineRecord = async id => {
   const m = userMedicines.find(x => x.id === id);
   if (!m || !currentUser || !confirm(`Delete ${m.name}?`)) return;
+
+  if (!navigator.onLine) {
+    const db = await initIndexedDB();
+    const tx = db.transaction("medicines", "readwrite");
+    tx.objectStore("medicines").delete(id);
+    await queueOfflineAction("DELETE_MEDICINE", { id });
+    userMedicines = userMedicines.filter(x => x.id !== id);
+    renderMedicinesUI();
+    renderDashboardUI();
+    renderAIUserContext();
+    toast("Medicine Removed", `${m.name} removed locally.`, "🗑️");
+    return;
+  }
+
   const r = await supabase.from("medicines").delete().eq("id", id).eq("owner_id", currentUser.id);
   if (r.error) return toast("Delete Failed", errMsg(r.error), "⚠️");
   userMedicines = userMedicines.filter(x => x.id !== id);
@@ -495,6 +689,7 @@ function startRingingAlarm(m) {
   if ($("alarmMedTime")) $("alarmMedTime").textContent = formatTime(m.time);
   $("medicineAlarmModal")?.classList.remove("hidden");
   playAlarmChime();
+  triggerSystemNotification(`⏰ Medicine Alarm: ${m.name}`, m.instruction || `Time to take ${m.name}`);
   clearInterval(activeAlarmInterval);
   activeAlarmInterval = setInterval(playAlarmChime, 1000);
 }
@@ -556,7 +751,6 @@ document.querySelectorAll(".nav-item,.bottom-nav-item").forEach(b => b.addEventL
 
 /* =========================================================
    MEDVAULT AI — LOCAL RETRIEVAL ASSISTANT
-   No remote model/API call. data.json is the knowledge base.
    ========================================================= */
 function normalizeKnowledge(data) {
   if (Array.isArray(data)) return data;
@@ -625,8 +819,6 @@ function personalContext() {
 
 function personalIntent(q) {
   const s = q.toLowerCase(), a = [];
-  
-  // Guard check: do not trigger personal intent for educational/medical query terms
   const isKnowledgeQuery = /\b(diagnose|diagnosed|diagnosis|effect|effects|side effect|side-effect|cause|causes|symptom|symptoms|treatment|treat|how is|what is|why is)\b/i.test(s);
 
   if (/\b(my|mine|uploaded|upload|document|documents|report|reports|record|records|file|files)\b/.test(s)) a.push("documents");
