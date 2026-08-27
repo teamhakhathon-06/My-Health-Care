@@ -122,7 +122,9 @@ self.addEventListener("fetch", event => {
 
             caches.open(CACHE_NAME)
               .then(cache => {
-                cache.put("./index.html", responseClone);
+                // Store using both request and URL fallback to ensure offline cache matches regardless of URL resolution
+                cache.put(request, responseClone);
+                cache.put("./index.html", responseClone.clone());
               });
           }
 
@@ -130,7 +132,8 @@ self.addEventListener("fetch", event => {
         })
         .catch(() => {
 
-          return caches.match("./index.html");
+          return caches.match("./index.html")
+            .then(res => res || caches.match("./"));
         })
     );
 
@@ -183,15 +186,16 @@ self.addEventListener("fetch", event => {
          * Asset unavailable while offline.
          */
 
-        return new Response(
-          "MedVault is currently offline.",
-          {
-            status: 503,
-            headers: {
-              "Content-Type": "text/plain"
+        return caches.match("./index.html")
+          .then(fallback => fallback || new Response(
+            "MedVault is currently offline.",
+            {
+              status: 503,
+              headers: {
+                "Content-Type": "text/plain"
+              }
             }
-          }
-        );
+          ));
       })
   );
 });
