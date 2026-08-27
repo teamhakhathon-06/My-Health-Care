@@ -42,6 +42,17 @@ const formatTime = t => { if (!t) return ""; const [h, m] = String(t).split(":")
 const formatBytes = b => { if (!b) return "0 KB"; const s = ["Bytes", "KB", "MB", "GB"], i = Math.min(Math.floor(Math.log(b) / Math.log(1024)), s.length - 1); return `${(b / 1024 ** i).toFixed(1)} ${s[i]}`; };
 const documentIcon = (type = "", name = "") => name.toLowerCase().endsWith(".pdf") || type.includes("pdf") ? "📕" : "🖼️";
 
+const GREETINGS_AND_COURTESIES = [
+  "hi", "hello", "hey",
+  "good morning", "good evening", "good afternoon", "good night",
+  "thank you", "thanks", "you're welcome", "youre welcome"
+];
+
+function isGreetingOrCourtesy(text) {
+  const cleaned = text.trim().toLowerCase().replace(/[^\w\s]/gi, '');
+  return GREETINGS_AND_COURTESIES.includes(cleaned);
+}
+
 function toast(title, message, icon = "🔔") {
   const t = $("toastNotification");
   if (!t) return;
@@ -106,7 +117,6 @@ window.signOut = async function signOut() {
     if (error) {
       toast("Logout Failed", errMsg(error), "⚠️");
     } else {
-      // Force reload or redirect to auth screen clean state
       window.location.reload();
     }
   } catch (err) {
@@ -115,7 +125,6 @@ window.signOut = async function signOut() {
   }
 };
 
-// Re-bind listeners safely
 document.addEventListener("DOMContentLoaded", () => {
   $("logoutBtn")?.addEventListener("click", window.signOut);
   $("profileLogoutBtn")?.addEventListener("click", window.signOut);
@@ -616,10 +625,14 @@ function personalContext() {
 
 function personalIntent(q) {
   const s = q.toLowerCase(), a = [];
+  
+  // Guard check: do not trigger personal intent for educational/medical query terms
+  const isKnowledgeQuery = /\b(diagnose|diagnosed|diagnosis|effect|effects|side effect|side-effect|cause|causes|symptom|symptoms|treatment|treat|how is|what is|why is)\b/i.test(s);
+
   if (/\b(my|mine|uploaded|upload|document|documents|report|reports|record|records|file|files)\b/.test(s)) a.push("documents");
-  if (/\b(medicine|medicines|tablet|tablets|dose|dosage|drug|medication|pill|pills)\b/.test(s)) a.push("medicines");
+  if (!isKnowledgeQuery && /\b(medicine|medicines|tablet|tablets|dose|dosage|drug|medication|pill|pills)\b/.test(s)) a.push("medicines");
   if (/\b(profile|name|age|blood|blood group)\b/.test(s)) a.push("profile");
-  if (/\b(today|taken|missed|pending|schedule|scheduled|reminder|alarm)\b/.test(s)) a.push("today");
+  if (!isKnowledgeQuery && /\b(today|taken|missed|pending|schedule|scheduled|reminder|alarm)\b/.test(s)) a.push("today");
   return [...new Set(a)];
 }
 
@@ -643,18 +656,32 @@ function personalAnswer(q) {
 async function answerAI(q) {
   const clean = String(q || "").trim();
   if (!clean) return { text: "Please type a question.", sources: [] };
-  if (/^(hi|hello|hey|good morning|good afternoon|good evening)[!. ]*$/i.test(clean)) return { text: `Hello ${currentProfile.name?.split(" ")[0] || "there"}. I'm MedVault AI. I use the local data.json knowledge base and your saved MedVault metadata.`, sources: [] };
+
+  if (isGreetingOrCourtesy(clean)) {
+    return {
+      text: "You're welcome! I am here to provide educational health information and help you navigate the information stored in MedVault.",
+      sources: []
+    };
+  }
+
   if (/\b(help|what can you do|how can you help)\b/i.test(clean)) return { text: "You can ask about medical topics in data.json, your saved medicines, medicine schedule, uploaded-document metadata, and profile details. I do not invent facts outside the local knowledge base.", sources: [] };
   const p = personalAnswer(clean);
   if (p) return { text: p, sources: [] };
   if (!knowledgeReady) await loadKnowledge();
-  const r = searchKnowledge(clean);
-  if (r.length) {
-    const top = r[0].item;
+
+  let filteredRelated = searchKnowledge(clean);
+
+  if (isGreetingOrCourtesy(clean)) {
+    filteredRelated = [];
+  } else {
+    filteredRelated = filteredRelated.slice(0, 1);
+  }
+
+  if (filteredRelated.length) {
+    const top = filteredRelated[0].item;
     let text = `Based on MedVault's local medical knowledge:\n\n**${top.title}**\n${top.content}`;
-    if (r.length > 1) text += `\n\nRelated information:\n${r.slice(1, 5).map(x => `• **${x.item.title}** — ${x.item.content.slice(0, 360)}${x.item.content.length > 360 ? "…" : ""}`).join("\n")}`;
     text += "\n\nEducational information only; not a diagnosis or a substitute for a qualified healthcare professional.";
-    return { text, sources: r.map(x => ({ title: x.item.title, section: x.item.section, source: x.item.source })) };
+    return { text, sources: filteredRelated.map(x => ({ title: x.item.title, section: x.item.section, source: x.item.source })) };
   }
   return { text: "I couldn't find a sufficiently relevant answer in local data.json. Try a more specific medical topic, or ask about your saved medicines, documents, or profile. I will not invent medical facts that are not present in the local knowledge base.", sources: [] };
 }
@@ -743,7 +770,6 @@ async function sendAI(prompt) {
     input?.focus();
   }
 }
-
 
 /* =========================================================
    UNIFIED MEDVAULT AI CONTROLLER
@@ -912,7 +938,6 @@ window.MedVaultAI = {
   }
 };
 
-// Initialize listeners on DOM load
 document.addEventListener('DOMContentLoaded', () => {
   MedVaultAI.init();
 });
@@ -988,7 +1013,6 @@ function openSection(sectionId) {
     targetSection.classList.add('active');
   }
 
-  // Update sidebar active states
   document.querySelectorAll('.sidebar-nav .nav-item').forEach(btn => {
     btn.classList.toggle('active', btn.getAttribute('data-target') === sectionId);
   });
