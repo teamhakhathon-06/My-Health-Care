@@ -2,7 +2,7 @@
    MEDVAULT PWA SERVICE WORKER
    ========================================================= */
 
-const CACHE_NAME = "medvault-shell-v3";
+const CACHE_NAME = "medvault-shell-v4";
 
 const APP_SHELL = [
   "./",
@@ -192,6 +192,32 @@ self.addEventListener("fetch", event => {
             }
           }
         );
+      })
+  );
+});
+
+
+/* ---------------------------------------------------------
+   NOTIFICATIONS
+--------------------------------------------------------- */
+
+/* Handle Background Medicine Alarms & Notifications */
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true })
+      .then(clientList => {
+        /* Focus existing tab if open */
+        for (let client of clientList) {
+          if (client.url && "focus" in client) {
+            return client.focus();
+          }
+        }
+        /* Open new tab if app is closed */
+        if (clients.openWindow) {
+          return clients.openWindow("./");
+        }
       })
   );
 });
