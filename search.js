@@ -16,6 +16,18 @@
   let isIndexed = false;
 
   /**
+   * Helper function for simple stemming / normalization (removing trailing 's')
+   */
+  function normalizeWord(word) {
+    if (!word) return "";
+    let w = word.toLowerCase();
+    if (w.length > 3 && w.endsWith("s")) {
+      w = w.slice(0, -1);
+    }
+    return w;
+  }
+
+  /**
    * Tokenizes and normalizes input text.
    */
   function tokenize(text) {
@@ -68,12 +80,20 @@
     
     searchIndex = items.map((rawItem, idx) => {
       const item = normalizeItem(rawItem, idx);
+      const titleToks = tokenize(item.title);
+      const kwToks = tokenize(item.keywords.join(" "));
+      const secToks = tokenize(item.section);
+      const cntToks = tokenize(item.content);
+
       return {
         item,
-        titleTokens: tokenize(item.title),
-        keywordsTokens: tokenize(item.keywords.join(" ")),
-        sectionTokens: tokenize(item.section),
-        contentTokens: tokenize(item.content),
+        titleTokens: titleToks,
+        keywordsTokens: kwToks,
+        sectionTokens: secToks,
+        contentTokens: cntToks,
+        stemmedTitleTokens: titleToks.map(normalizeWord),
+        stemmedKwTokens: kwToks.map(normalizeWord),
+        stemmedCntTokens: cntToks.map(normalizeWord),
         rawTitleLower: item.title.toLowerCase(),
         rawContentLower: item.content.toLowerCase()
       };
@@ -94,6 +114,7 @@
     if (!queryTokens.length && cleanQuery.length > 0) {
       queryTokens.push(cleanQuery);
     }
+    const stemmedQueryTokens = queryTokens.map(normalizeWord);
 
     const results = [];
 
@@ -108,28 +129,33 @@
       if (record.rawContentLower.includes(cleanQuery)) score += 20;
 
       // 2. Token Weighting
-      queryTokens.forEach(qToken => {
+      queryTokens.forEach((qToken, qIdx) => {
+        const stemmedQToken = stemmedQueryTokens[qIdx];
+
         // Title Token Matches
-        record.titleTokens.forEach(tToken => {
-          if (tToken === qToken) score += 25;
-          else if (tToken.includes(qToken) || qToken.includes(tToken)) score += 10;
+        record.titleTokens.forEach((tToken, tIdx) => {
+          const stemmedTToken = record.stemmedTitleTokens[tIdx];
+          if (tToken === qToken || stemmedTToken === stemmedQToken) score += 25;
+          else if (tToken.includes(qToken) || qToken.includes(tToken) || stemmedTToken.includes(stemmedQToken) || stemmedQToken.includes(stemmedTToken)) score += 10;
         });
 
         // Keywords Token Matches
-        record.keywordsTokens.forEach(kToken => {
-          if (kToken === qToken) score += 18;
-          else if (kToken.includes(qToken)) score += 8;
+        record.keywordsTokens.forEach((kToken, kIdx) => {
+          const stemmedKToken = record.stemmedKwTokens[kIdx];
+          if (kToken === qToken || stemmedKToken === stemmedQToken) score += 18;
+          else if (kToken.includes(qToken) || stemmedKToken.includes(stemmedQToken)) score += 8;
         });
 
         // Section Token Matches
         record.sectionTokens.forEach(sToken => {
-          if (sToken === qToken) score += 12;
+          if (sToken === qToken || normalizeWord(sToken) === stemmedQToken) score += 12;
         });
 
         // Content Token Matches
-        record.contentTokens.forEach(cToken => {
-          if (cToken === qToken) score += 3;
-          else if (cToken.includes(qToken)) score += 1;
+        record.contentTokens.forEach((cToken, cIdx) => {
+          const stemmedCToken = record.stemmedCntTokens[cIdx];
+          if (cToken === qToken || stemmedCToken === stemmedQToken) score += 3;
+          else if (cToken.includes(qToken) || stemmedCToken.includes(stemmedQToken)) score += 1;
         });
       });
 
