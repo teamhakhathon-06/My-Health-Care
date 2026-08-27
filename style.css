@@ -5422,6 +5422,66 @@ textarea:focus-visible {
     transition-duration: .01ms !important;
   }
 }
+/* Excel-style Dynamic Table */
+.excel-table-container {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.excel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.excel-table th,
+.excel-table td {
+  border: 1px solid var(--border-subtle);
+  padding: 6px 8px;
+}
+
+.excel-table th {
+  background: var(--surface-subtle);
+  color: var(--text-main);
+  font-weight: 700;
+  text-align: left;
+}
+
+.excel-table input[type="text"],
+.excel-table input[type="number"],
+.excel-table input[type="date"],
+.excel-table select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--radius-xs);
+  outline: none;
+}
+
+.excel-table input:focus,
+.excel-table select:focus {
+  background: var(--surface);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(8, 127, 91, 0.12);
+}
+
+.btn-table-delete {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.btn-table-delete:hover {
+  background: var(--red-light);
+}
+
+.excel-total-row {
+  background: var(--surface-subtle);
+}
 
 /* ================================================================
    END — MEDVAULT PRODUCTION VISUAL LAYER
