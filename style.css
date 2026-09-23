@@ -5686,6 +5686,272 @@ textarea:focus-visible {
   }
 }
 
+/* =========================================================
+   MEDVAULT PUBLIC HEALTH ID
+========================================================= */
+
+.public-health-id-page {
+  min-height: 100vh;
+  width: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 35%),
+    linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
+  padding: 40px 20px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  box-sizing: border-box;
+}
+
+.public-health-id-wrapper {
+  width: 100%;
+  max-width: 850px;
+}
+
+.public-health-id-brand {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.public-health-id-logo {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 12px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2563eb;
+  color: white;
+  font-size: 28px;
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.22);
+}
+
+.public-health-id-brand h1 {
+  margin: 0;
+  font-size: 28px;
+  color: #111827;
+  font-weight: 800;
+}
+
+.public-health-id-brand p {
+  margin: 7px 0 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.public-health-id-card {
+  background: #ffffff;
+  border: 1px solid #dbe5f0;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.10);
+}
+
+.public-health-id-header {
+  padding: 26px 30px;
+  background: linear-gradient(135deg, #eff6ff, #ffffff);
+  border-bottom: 1px solid #e5edf5;
+}
+
+.public-health-id-header-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.public-health-id-avatar {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 25px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.public-health-id-header h2 {
+  margin: 0 0 5px;
+  font-size: 25px;
+  color: #111827;
+}
+
+.public-health-id-header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.public-health-id-badge {
+  margin-left: auto;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.public-health-id-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: #e5edf5;
+}
+
+.public-health-id-field {
+  background: #ffffff;
+  padding: 21px 24px;
+  min-width: 0;
+}
+
+.public-health-id-field.full {
+  grid-column: 1 / -1;
+}
+
+.public-health-id-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.public-health-id-value {
+  color: #111827;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.public-health-id-value.empty {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.public-health-id-footer {
+  padding: 22px 26px;
+  background: #f8fafc;
+  border-top: 1px solid #e5edf5;
+}
+
+.public-health-id-notice {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.public-health-id-error {
+  max-width: 600px;
+  margin: 70px auto;
+  padding: 35px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 22px;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
+}
+
+.public-health-id-error-icon {
+  font-size: 42px;
+  margin-bottom: 12px;
+}
+
+.public-health-id-error h2 {
+  margin: 0 0 8px;
+  color: #111827;
+}
+
+.public-health-id-error p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.public-health-id-loading {
+  max-width: 600px;
+  margin: 70px auto;
+  padding: 40px;
+  text-align: center;
+  color: #64748b;
+}
+
+.public-health-id-spinner {
+  width: 38px;
+  height: 38px;
+  margin: 0 auto 18px;
+  border: 4px solid #dbeafe;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: publicHealthIdSpin 0.8s linear infinite;
+}
+
+@keyframes publicHealthIdSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Mobile */
+@media (max-width: 650px) {
+  .public-health-id-page {
+    padding: 20px 12px;
+  }
+
+  .public-health-id-brand h1 {
+    font-size: 24px;
+  }
+
+  .public-health-id-header {
+    padding: 22px 20px;
+  }
+
+  .public-health-id-header-row {
+    align-items: flex-start;
+  }
+
+  .public-health-id-avatar {
+    width: 56px;
+    height: 56px;
+    font-size: 20px;
+  }
+
+  .public-health-id-header h2 {
+    font-size: 20px;
+  }
+
+  .public-health-id-badge {
+    display: none;
+  }
+
+  .public-health-id-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .public-health-id-field.full {
+    grid-column: auto;
+  }
+
+  .public-health-id-field {
+    padding: 18px 20px;
+  }
+
+  .public-health-id-footer {
+    padding: 18px 20px;
+  }
+}
+
+
 /* ================================================================
    END — MEDVAULT PRODUCTION VISUAL LAYER
    ================================================================ */
