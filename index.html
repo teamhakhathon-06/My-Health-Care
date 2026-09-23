@@ -1179,7 +1179,166 @@
           </div>
         </div>
 
-       <!-- Privacy, Security & Usage Information -->
+        <!-- =======================================================
+     MEDVAULT HEALTH ID
+======================================================== -->
+<div class="health-id-card">
+
+  <div class="health-id-header">
+    <div>
+      <span class="eyebrow">PATIENT HEALTH ID</span>
+      <h2>MedVault Health ID</h2>
+      <p>
+        Your essential health information, available through your
+        permanent Health ID QR.
+      </p>
+    </div>
+
+    <div class="health-id-badge">
+      🪪 HEALTH ID
+    </div>
+  </div>
+
+  <div class="health-id-main">
+
+    <div class="health-id-qr-area">
+      <div class="health-id-qr-box">
+        <div id="healthIdQr">
+          QR
+        </div>
+      </div>
+
+      <strong>Scan to view Health ID</strong>
+
+      <span id="healthIdValue">
+        Health ID loading...
+      </span>
+
+      <small>
+        This QR remains the same even when your information is updated.
+      </small>
+    </div>
+
+    <div class="health-id-form">
+
+      <div class="health-field">
+        <label for="healthName">👤 Full Name</label>
+        <input
+          type="text"
+          id="healthName"
+          placeholder="Enter your full name"
+        >
+      </div>
+
+      <div class="health-field">
+        <label for="healthBlood">🩸 Blood Group</label>
+        <select id="healthBlood">
+          <option value="">Select blood group</option>
+          <option value="A+">A+</option>
+          <option value="A-">A-</option>
+          <option value="B+">B+</option>
+          <option value="B-">B-</option>
+          <option value="AB+">AB+</option>
+          <option value="AB-">AB-</option>
+          <option value="O+">O+</option>
+          <option value="O-">O-</option>
+        </select>
+      </div>
+
+      <div class="health-field">
+        <label for="healthAge">🎂 Age / Date of Birth</label>
+        <input
+          type="text"
+          id="healthAge"
+          placeholder="e.g. 24 or 15-08-2002"
+        >
+      </div>
+
+      <div class="health-field">
+        <label for="healthAllergies">⚠️ Allergies</label>
+        <textarea
+          id="healthAllergies"
+          placeholder="Enter known allergies or write None"
+        ></textarea>
+      </div>
+
+      <div class="health-field">
+        <label for="healthMedications">💊 Current Important Medications</label>
+        <textarea
+          id="healthMedications"
+          placeholder="Enter important current medications"
+        ></textarea>
+      </div>
+
+      <div class="health-field">
+        <label for="healthConditions">🏥 Major Medical Conditions</label>
+        <textarea
+          id="healthConditions"
+          placeholder="Enter major medical conditions or write None"
+        ></textarea>
+      </div>
+
+      <div class="health-field">
+        <label for="healthEmergencyName">📞 Emergency Contact Name</label>
+        <input
+          type="text"
+          id="healthEmergencyName"
+          placeholder="Emergency contact name"
+        >
+      </div>
+
+      <div class="health-field">
+        <label for="healthEmergencyPhone">📱 Emergency Contact Phone</label>
+        <input
+          type="tel"
+          id="healthEmergencyPhone"
+          placeholder="+91 XXXXX XXXXX"
+        >
+      </div>
+
+      <div class="health-field health-field-full">
+        <label for="healthDoctor">🩺 Doctor / Hospital Contact</label>
+        <textarea
+          id="healthDoctor"
+          placeholder="Optional doctor or hospital contact information"
+        ></textarea>
+      </div>
+
+      <div class="health-id-actions">
+
+        <button
+          type="button"
+          class="btn btn-primary"
+          id="saveHealthIdBtn"
+        >
+          Save Health ID
+        </button>
+
+        <button
+          type="button"
+          class="btn"
+          id="editHealthIdBtn"
+        >
+          Edit Information
+        </button>
+
+      </div>
+
+      <p class="health-id-notice">
+        🔒 Only the information entered in this Health ID is displayed
+        when the QR is scanned. Your medical documents, expenses,
+        medicine alarms and MedVault AI data are not shared.
+      </p>
+
+    </div>
+
+  </div>
+
+</div>
+
+<br>
+<br>
+       
 <div class="security-features-grid">
 
   <div class="security-card">
@@ -1323,6 +1482,7 @@
 
   
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Application Javascript (ES Module) -->
   <script type="module" src="app.js"></script>
   <script src="./search.js"></script>
