@@ -26,7 +26,22 @@ const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
 
-let currentUser = null, currentProfile = { name: "", email: "", blood: "O+", age: "" };
+let currentUser = null;
+
+let currentProfile = {
+  name: "",
+  email: "",
+  blood: "O+",
+  age: "",
+  allergies: "",
+  important_medications: "",
+  medical_conditions: "",
+  emergency_contact_name: "",
+  emergency_contact_phone: "",
+  doctor_hospital_contact: "",
+  health_id: ""
+};
+
 let userDocuments = [], userMedicines = [], activeCategoryFilter = "all", activeSearchQuery = "";
 let unsubscribeProfile = null, unsubscribeDocuments = null, unsubscribeMedicines = null;
 let medicineAlarmTimer = null, activeAlarmInterval = null, activeAlarmMedId = null, audioCtx = null;
@@ -332,13 +347,25 @@ async function loadProfile(user) {
   if (error) throw error;
   let profile = p;
   if (!profile) {
-    const fresh = {
-      id: user.id,
-      name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split("@")[0] || "Patient",
-      email: user.email || "",
-      blood: user.user_metadata?.blood || "O+",
-      age: user.user_metadata?.age || ""
-    };
+const fresh = {
+  id: user.id,
+
+  name: user.user_metadata?.name ||
+        user.user_metadata?.full_name ||
+        user.email?.split("@")[0] ||
+        "Patient",
+
+  email: user.email || "",
+  blood: user.user_metadata?.blood || "O+",
+  age: user.user_metadata?.age || "",
+
+  allergies: "",
+  important_medications: "",
+  medical_conditions: "",
+  emergency_contact_name: "",
+  emergency_contact_phone: "",
+  doctor_hospital_contact: ""
+};
     const r = await supabase.from("profiles").insert(fresh).select("*").single();
     if (r.error && r.error.code === "23505") {
       const retry = await supabase.from("profiles").select("*").eq("id", user.id).single();
@@ -349,9 +376,29 @@ async function loadProfile(user) {
       profile = r.data;
     }
   }
-  currentProfile = { name: profile?.name || "Patient", email: profile?.email || user.email || "", blood: profile?.blood || "O+", age: profile?.age || "" };
-  renderProfileUI(currentProfile);
-  renderAIUserContext();
+currentProfile = {
+  id: profile?.id || user.id,
+
+  name: profile?.name || "Patient",
+  email: profile?.email || user.email || "",
+  blood: profile?.blood || "O+",
+  age: profile?.age || "",
+
+  allergies: profile?.allergies || "",
+  important_medications: profile?.important_medications || "",
+  medical_conditions: profile?.medical_conditions || "",
+  emergency_contact_name: profile?.emergency_contact_name || "",
+  emergency_contact_phone: profile?.emergency_contact_phone || "",
+  doctor_hospital_contact: profile?.doctor_hospital_contact || "",
+
+  health_id: profile?.health_id || ""
+};
+
+console.log("Loaded MedVault profile:", currentProfile);
+
+renderProfileUI(currentProfile);
+renderHealthIdUI(currentProfile);
+renderAIUserContext();
 }
 
 function renderProfileUI(p) {
@@ -371,6 +418,147 @@ function renderProfileUI(p) {
   if ($("profileEmail")) $("profileEmail").textContent = p.email || "—";
   document.querySelectorAll(".mobile-avatar").forEach(x => x.textContent = av);
 }
+
+/* =========================================================
+   MEDVAULT HEALTH ID
+========================================================= */
+
+function getHealthIdUrl(healthId) {
+  if (!healthId) return "";
+
+  return `${window.location.origin}${window.location.pathname}?health_id=${encodeURIComponent(healthId)}`;
+}
+
+
+function renderHealthIdUI(profile) {
+  if (!profile) return;
+
+  const fields = {
+    healthName: profile.name || "",
+    healthBlood: profile.blood || "",
+    healthAge: profile.age || "",
+    healthAllergies: profile.allergies || "",
+    healthMedications: profile.important_medications || "",
+    healthConditions: profile.medical_conditions || "",
+    healthEmergencyName: profile.emergency_contact_name || "",
+    healthEmergencyPhone: profile.emergency_contact_phone || "",
+    healthDoctor: profile.doctor_hospital_contact || ""
+  };
+
+  Object.entries(fields).forEach(([id, value]) => {
+    const element = $(id);
+    if (element) element.value = value;
+  });
+
+  const healthIdValue = $("healthIdValue");
+
+  if (healthIdValue) {
+    healthIdValue.textContent = profile.health_id
+      ? `Health ID: ${profile.health_id}`
+      : "Health ID is being created...";
+  }
+
+  const qrContainer = $("healthIdQr");
+
+  if (qrContainer && profile.health_id && window.QRCode) {
+    qrContainer.innerHTML = "";
+
+    new QRCode(qrContainer, {
+      text: getHealthIdUrl(profile.health_id),
+      width: 170,
+      height: 170,
+      colorDark: "#111827",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  }
+}
+
+
+async function saveHealthId() {
+
+  if (!currentUser) {
+    toast("Not Signed In", "Please sign in to update your Health ID.", "⚠️");
+    return;
+  }
+
+  const payload = {
+    name: $("healthName")?.value.trim() || "",
+    blood: $("healthBlood")?.value || "",
+    age: $("healthAge")?.value.trim() || "",
+    allergies: $("healthAllergies")?.value.trim() || "",
+    important_medications: $("healthMedications")?.value.trim() || "",
+    medical_conditions: $("healthConditions")?.value.trim() || "",
+    emergency_contact_name: $("healthEmergencyName")?.value.trim() || "",
+    emergency_contact_phone: $("healthEmergencyPhone")?.value.trim() || "",
+    doctor_hospital_contact: $("healthDoctor")?.value.trim() || ""
+  };
+
+  if (!payload.name) {
+    toast("Name Required", "Please enter your full name.", "⚠️");
+    return;
+  }
+
+  const button = $("saveHealthIdBtn");
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Saving...";
+  }
+
+  try {
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .update(payload)
+      .eq("id", currentUser.id)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    currentProfile = {
+      ...currentProfile,
+      ...data
+    };
+
+    renderProfileUI(currentProfile);
+    renderHealthIdUI(currentProfile);
+    renderAIUserContext();
+
+    toast(
+      "Health ID Updated",
+      "Your Health ID information has been saved.",
+      "✅"
+    );
+
+  } catch (error) {
+
+    console.error("Health ID save error:", error);
+
+    toast(
+      "Update Failed",
+      errMsg(error),
+      "⚠️"
+    );
+
+  } finally {
+
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Save Health ID";
+    }
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  $("saveHealthIdBtn")?.addEventListener(
+    "click",
+    saveHealthId
+  );
+
+});
 
 function listenToProfile(user) {
   unsubscribeProfile?.();
@@ -1546,7 +1734,19 @@ async function onUser(user) {
     userDocuments = [];
     userMedicines = [];
     userExpenses = [];
-    currentProfile = { name: "", email: "", blood: "O+", age: "" };
+currentProfile = {
+  name: "",
+  email: "",
+  blood: "O+",
+  age: "",
+  allergies: "",
+  important_medications: "",
+  medical_conditions: "",
+  emergency_contact_name: "",
+  emergency_contact_phone: "",
+  doctor_hospital_contact: "",
+  health_id: ""
+};
     unsubscribeProfile?.();
     unsubscribeDocuments?.();
     unsubscribeMedicines?.();
