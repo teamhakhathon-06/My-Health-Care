@@ -5483,6 +5483,209 @@ textarea:focus-visible {
   background: var(--surface-subtle);
 }
 
+/* =========================================================
+   MEDVAULT HEALTH ID
+========================================================= */
+
+.health-id-card {
+  margin-top: 24px;
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 22px;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, .06);
+}
+
+.health-id-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 26px;
+}
+
+.health-id-header h2 {
+  margin: 5px 0 6px;
+  color: var(--text-main);
+}
+
+.health-id-header p {
+  margin: 0;
+  color: var(--text-secondary);
+  max-width: 650px;
+}
+
+.health-id-badge {
+  padding: 9px 13px;
+  border-radius: 999px;
+  background: rgba(11, 127, 120, .10);
+  color: var(--primary);
+  font-size: .75rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.health-id-main {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 30px;
+  align-items: start;
+}
+
+.health-id-qr-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 22px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  background: var(--surface-subtle);
+}
+
+.health-id-qr-box {
+  width: 190px;
+  height: 190px;
+  padding: 10px;
+  background: #ffffff;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.health-id-qr-box img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#healthIdValue {
+  margin-top: 7px;
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.health-id-qr-area small {
+  display: block;
+  margin-top: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.health-id-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.health-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.health-field-full {
+  grid-column: 1 / -1;
+}
+
+.health-field label {
+  font-size: .78rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.health-field input,
+.health-field select,
+.health-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-main);
+  padding: 12px 13px;
+  font: inherit;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+
+.health-field textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.health-field input:focus,
+.health-field select:focus,
+.health-field textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(11, 127, 120, .10);
+}
+
+.health-id-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.health-id-notice {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(11, 127, 120, .06);
+  color: var(--text-secondary);
+  font-size: .78rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 800px) {
+  .health-id-main {
+    grid-template-columns: 1fr;
+  }
+
+  .health-id-qr-area {
+    max-width: 320px;
+    width: 100%;
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 600px) {
+  .health-id-card {
+    padding: 18px;
+  }
+
+  .health-id-header {
+    flex-direction: column;
+  }
+
+  .health-id-form {
+    grid-template-columns: 1fr;
+  }
+
+  .health-field-full {
+    grid-column: auto;
+  }
+
+  .health-id-actions {
+    grid-column: auto;
+    flex-direction: column;
+  }
+
+  .health-id-actions button {
+    width: 100%;
+  }
+
+  .health-id-notice {
+    grid-column: auto;
+  }
+}
+
 /* ================================================================
    END — MEDVAULT PRODUCTION VISUAL LAYER
    ================================================================ */
