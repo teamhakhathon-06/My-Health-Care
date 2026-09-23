@@ -49,6 +49,338 @@ let selectedScreenFile = null, uploadInProgress = false;
 let knowledgeItems = [], knowledgeReady = false, knowledgeLoading = false, aiHistory = [];
 
 const $ = id => document.getElementById(id);
+
+/* =========================================================
+   PUBLIC MEDVAULT HEALTH ID
+   QR SCAN → PUBLIC HEALTH ID PAGE
+========================================================= */
+
+
+const PUBLIC_HEALTH_ID =
+  new URLSearchParams(window.location.search).get("health_id");
+
+
+function publicHealthIdValue(value) {
+  const text = String(value ?? "").trim();
+
+  if (!text) {
+    return `<span class="public-health-id-value empty">Not provided</span>`;
+  }
+
+  return `<span class="public-health-id-value">${esc(text)}</span>`;
+}
+
+
+function publicHealthIdInitials(name) {
+  const value = String(name || "").trim();
+
+  if (!value) return "MV";
+
+  return value
+    .split(/\s+/)
+    .map(part => part[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+
+function showPublicHealthIdLoading() {
+
+  const page = $("publicHealthIdPage");
+
+  if (!page) return;
+
+  page.classList.remove("hidden");
+
+  page.innerHTML = `
+    <main class="public-health-id-page">
+      <div class="public-health-id-wrapper">
+
+        <div class="public-health-id-brand">
+          <div class="public-health-id-logo">✚</div>
+          <h1>MedVault Health ID</h1>
+          <p>Securely shared health information</p>
+        </div>
+
+        <div class="public-health-id-card">
+
+          <div class="public-health-id-loading">
+            <div class="public-health-id-spinner"></div>
+            <p>Loading Health ID information...</p>
+          </div>
+
+        </div>
+
+      </div>
+    </main>
+  `;
+}
+
+
+function showPublicHealthIdError(message) {
+
+  const page = $("publicHealthIdPage");
+
+  if (!page) return;
+
+  page.classList.remove("hidden");
+
+  page.innerHTML = `
+    <main class="public-health-id-page">
+
+      <div class="public-health-id-wrapper">
+
+        <div class="public-health-id-brand">
+          <div class="public-health-id-logo">✚</div>
+          <h1>MedVault Health ID</h1>
+          <p>Securely shared health information</p>
+        </div>
+
+        <div class="public-health-id-error">
+
+          <div class="public-health-id-error-icon">
+            ⚠️
+          </div>
+
+          <h2>Health ID Not Found</h2>
+
+          <p>
+            ${esc(message || "This Health ID is invalid or no longer available.")}
+          </p>
+
+        </div>
+
+      </div>
+
+    </main>
+  `;
+}
+
+
+function renderPublicHealthId(profile) {
+
+  const page = $("publicHealthIdPage");
+
+  if (!page) return;
+
+  page.classList.remove("hidden");
+
+  const initials = publicHealthIdInitials(profile.name);
+
+  page.innerHTML = `
+    <main class="public-health-id-page">
+
+      <div class="public-health-id-wrapper">
+
+        <!-- BRAND -->
+        <div class="public-health-id-brand">
+
+          <div class="public-health-id-logo">
+            ✚
+          </div>
+
+          <h1>MedVault Health ID</h1>
+
+          <p>
+            Securely shared health information
+          </p>
+
+        </div>
+
+
+        <!-- HEALTH ID CARD -->
+        <section class="public-health-id-card">
+
+          <!-- HEADER -->
+          <div class="public-health-id-header">
+
+            <div class="public-health-id-header-row">
+
+              <div class="public-health-id-avatar">
+                ${esc(initials)}
+              </div>
+
+              <div>
+
+                <h2>
+                  ${esc(profile.name || "Patient")}
+                </h2>
+
+                <p>
+                  MedVault Health ID
+                </p>
+
+              </div>
+
+              <div class="public-health-id-badge">
+                ✓ Verified ID
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <!-- INFORMATION -->
+          <div class="public-health-id-grid">
+
+            <div class="public-health-id-field">
+              <span class="public-health-id-label">
+                Full Name
+              </span>
+
+              ${publicHealthIdValue(profile.name)}
+            </div>
+
+
+            <div class="public-health-id-field">
+              <span class="public-health-id-label">
+                Blood Group
+              </span>
+
+              ${publicHealthIdValue(profile.blood)}
+            </div>
+
+
+            <div class="public-health-id-field">
+              <span class="public-health-id-label">
+                Age / Date of Birth
+              </span>
+
+              ${publicHealthIdValue(profile.age)}
+            </div>
+
+
+            <div class="public-health-id-field">
+              <span class="public-health-id-label">
+                Allergies
+              </span>
+
+              ${publicHealthIdValue(profile.allergies)}
+            </div>
+
+
+            <div class="public-health-id-field full">
+              <span class="public-health-id-label">
+                Current Important Medications
+              </span>
+
+              ${publicHealthIdValue(profile.important_medications)}
+            </div>
+
+
+            <div class="public-health-id-field full">
+              <span class="public-health-id-label">
+                Major Medical Conditions
+              </span>
+
+              ${publicHealthIdValue(profile.medical_conditions)}
+            </div>
+
+
+            <div class="public-health-id-field">
+              <span class="public-health-id-label">
+                Emergency Contact Name
+              </span>
+
+              ${publicHealthIdValue(profile.emergency_contact_name)}
+            </div>
+
+
+            <div class="public-health-id-field">
+              <span class="public-health-id-label">
+                Emergency Contact Phone
+              </span>
+
+              ${publicHealthIdValue(profile.emergency_contact_phone)}
+            </div>
+
+
+            <div class="public-health-id-field full">
+              <span class="public-health-id-label">
+                Doctor / Hospital Contact
+              </span>
+
+              ${publicHealthIdValue(profile.doctor_hospital_contact)}
+            </div>
+
+          </div>
+
+
+          <!-- NOTICE -->
+          <div class="public-health-id-footer">
+
+            <p class="public-health-id-notice">
+              This information is provided by the patient and may not
+              represent a complete medical history. For medical decisions,
+              consult a qualified healthcare professional.
+            </p>
+
+          </div>
+
+        </section>
+
+      </div>
+
+    </main>
+  `;
+}
+
+
+async function openPublicHealthId(healthId) {
+
+  if (!healthId) return false;
+
+  showPublicHealthIdLoading();
+
+  try {
+
+    const { data, error } = await supabase
+      .rpc("get_public_health_id", {
+        p_health_id: healthId
+      });
+
+    if (error) {
+      console.error("Public Health ID error:", error);
+      throw error;
+    }
+
+    /*
+       Supabase returns an array for a table-returning RPC.
+    */
+
+    const profile = Array.isArray(data)
+      ? data[0]
+      : data;
+
+    if (!profile) {
+
+      showPublicHealthIdError(
+        "The Health ID could not be found. Please check the QR code."
+      );
+
+      return true;
+    }
+
+    renderPublicHealthId(profile);
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      "Failed to load public Health ID:",
+      error
+    );
+
+    showPublicHealthIdError(
+      "Unable to load this Health ID right now. Please try again."
+    );
+
+    return true;
+  }
+}
 const esc = v => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 const errMsg = e => e?.message || e?.error_description || String(e || "Unknown error");
 const initials = n => !n ? "U" : n.trim().split(/\s+/).map(x => x[0]).slice(0, 2).join("").toUpperCase();
@@ -1781,6 +2113,12 @@ supabase.auth.onAuthStateChange((event, session) => {
 });
 
 async function initializeMedVault() {
+
+  if (PUBLIC_HEALTH_ID) 
+    { console.log( "🏥 Public MedVault Health ID:", PUBLIC_HEALTH_ID ); 
+      await openPublicHealthId(PUBLIC_HEALTH_ID);
+       return; }
+
   console.log("🏥 MedVault starting...");
   loadKnowledge().catch(console.error);
   try {
