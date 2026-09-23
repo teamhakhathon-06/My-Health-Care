@@ -59,19 +59,32 @@ const $ = id => document.getElementById(id);
 const PUBLIC_HEALTH_ID =
   new URLSearchParams(window.location.search).get("health_id");
 
+/* =========================================================
+   PUBLIC MEDVAULT HEALTH ID
+========================================================= */
 
 function publicHealthIdValue(value) {
+
   const text = String(value ?? "").trim();
 
   if (!text) {
-    return `<span class="public-health-id-value empty">Not provided</span>`;
+    return `
+      <span class="public-health-id-value empty">
+        Not provided
+      </span>
+    `;
   }
 
-  return `<span class="public-health-id-value">${esc(text)}</span>`;
+  return `
+    <span class="public-health-id-value">
+      ${esc(text)}
+    </span>
+  `;
 }
 
 
 function publicHealthIdInitials(name) {
+
   const value = String(name || "").trim();
 
   if (!value) return "MV";
@@ -89,30 +102,48 @@ function showPublicHealthIdLoading() {
 
   const page = $("publicHealthIdPage");
 
-  if (!page) return;
+  if (!page) {
+    console.error("❌ publicHealthIdPage not found.");
+    return;
+  }
 
   page.classList.remove("hidden");
 
   page.innerHTML = `
     <main class="public-health-id-page">
+
       <div class="public-health-id-wrapper">
 
         <div class="public-health-id-brand">
-          <div class="public-health-id-logo">✚</div>
+
+          <div class="public-health-id-logo">
+            ✚
+          </div>
+
           <h1>MedVault Health ID</h1>
-          <p>Securely shared health information</p>
+
+          <p>
+            Securely shared health information
+          </p>
+
         </div>
 
         <div class="public-health-id-card">
 
           <div class="public-health-id-loading">
+
             <div class="public-health-id-spinner"></div>
-            <p>Loading Health ID information...</p>
+
+            <p>
+              Loading Health ID information...
+            </p>
+
           </div>
 
         </div>
 
       </div>
+
     </main>
   `;
 }
@@ -132,9 +163,17 @@ function showPublicHealthIdError(message) {
       <div class="public-health-id-wrapper">
 
         <div class="public-health-id-brand">
-          <div class="public-health-id-logo">✚</div>
+
+          <div class="public-health-id-logo">
+            ✚
+          </div>
+
           <h1>MedVault Health ID</h1>
-          <p>Securely shared health information</p>
+
+          <p>
+            Securely shared health information
+          </p>
+
         </div>
 
         <div class="public-health-id-error">
@@ -146,7 +185,10 @@ function showPublicHealthIdError(message) {
           <h2>Health ID Not Found</h2>
 
           <p>
-            ${esc(message || "This Health ID is invalid or no longer available.")}
+            ${esc(
+              message ||
+              "This Health ID is invalid or no longer available."
+            )}
           </p>
 
         </div>
@@ -162,18 +204,21 @@ function renderPublicHealthId(profile) {
 
   const page = $("publicHealthIdPage");
 
-  if (!page) return;
+  if (!page) {
+    console.error("❌ publicHealthIdPage not found.");
+    return;
+  }
 
   page.classList.remove("hidden");
 
-  const initials = publicHealthIdInitials(profile.name);
+  const initials =
+    publicHealthIdInitials(profile.name);
 
   page.innerHTML = `
     <main class="public-health-id-page">
 
       <div class="public-health-id-wrapper">
 
-        <!-- BRAND -->
         <div class="public-health-id-brand">
 
           <div class="public-health-id-logo">
@@ -189,10 +234,8 @@ function renderPublicHealthId(profile) {
         </div>
 
 
-        <!-- HEALTH ID CARD -->
         <section class="public-health-id-card">
 
-          <!-- HEADER -->
           <div class="public-health-id-header">
 
             <div class="public-health-id-header-row">
@@ -214,7 +257,7 @@ function renderPublicHealthId(profile) {
               </div>
 
               <div class="public-health-id-badge">
-                ✓ Verified ID
+                ✓ Health ID
               </div>
 
             </div>
@@ -222,7 +265,6 @@ function renderPublicHealthId(profile) {
           </div>
 
 
-          <!-- INFORMATION -->
           <div class="public-health-id-grid">
 
             <div class="public-health-id-field">
@@ -266,7 +308,9 @@ function renderPublicHealthId(profile) {
                 Current Important Medications
               </span>
 
-              ${publicHealthIdValue(profile.important_medications)}
+              ${publicHealthIdValue(
+                profile.important_medications
+              )}
             </div>
 
 
@@ -275,7 +319,9 @@ function renderPublicHealthId(profile) {
                 Major Medical Conditions
               </span>
 
-              ${publicHealthIdValue(profile.medical_conditions)}
+              ${publicHealthIdValue(
+                profile.medical_conditions
+              )}
             </div>
 
 
@@ -284,7 +330,9 @@ function renderPublicHealthId(profile) {
                 Emergency Contact Name
               </span>
 
-              ${publicHealthIdValue(profile.emergency_contact_name)}
+              ${publicHealthIdValue(
+                profile.emergency_contact_name
+              )}
             </div>
 
 
@@ -293,7 +341,9 @@ function renderPublicHealthId(profile) {
                 Emergency Contact Phone
               </span>
 
-              ${publicHealthIdValue(profile.emergency_contact_phone)}
+              ${publicHealthIdValue(
+                profile.emergency_contact_phone
+              )}
             </div>
 
 
@@ -302,19 +352,20 @@ function renderPublicHealthId(profile) {
                 Doctor / Hospital Contact
               </span>
 
-              ${publicHealthIdValue(profile.doctor_hospital_contact)}
+              ${publicHealthIdValue(
+                profile.doctor_hospital_contact
+              )}
             </div>
 
           </div>
 
 
-          <!-- NOTICE -->
           <div class="public-health-id-footer">
 
             <p class="public-health-id-notice">
-              This information is provided by the patient and may not
-              represent a complete medical history. For medical decisions,
-              consult a qualified healthcare professional.
+              This information is provided by the patient and may
+              not represent a complete medical history. For medical
+              decisions, consult a qualified healthcare professional.
             </p>
 
           </div>
@@ -330,7 +381,10 @@ function renderPublicHealthId(profile) {
 
 async function openPublicHealthId(healthId) {
 
-  if (!healthId) return false;
+  console.log(
+    "🏥 PUBLIC HEALTH ID REQUEST:",
+    healthId
+  );
 
   showPublicHealthIdLoading();
 
@@ -341,46 +395,50 @@ async function openPublicHealthId(healthId) {
         p_health_id: healthId
       });
 
+    console.log(
+      "🏥 PUBLIC HEALTH ID DATA:",
+      data
+    );
+
+    console.log(
+      "🏥 PUBLIC HEALTH ID ERROR:",
+      error
+    );
+
     if (error) {
-      console.error("Public Health ID error:", error);
       throw error;
     }
 
-    /*
-       Supabase returns an array for a table-returning RPC.
-    */
-
-    const profile = Array.isArray(data)
-      ? data[0]
-      : data;
+    const profile =
+      Array.isArray(data)
+        ? data[0]
+        : data;
 
     if (!profile) {
 
       showPublicHealthIdError(
-        "The Health ID could not be found. Please check the QR code."
+        "This Health ID does not exist."
       );
 
-      return true;
+      return;
     }
 
     renderPublicHealthId(profile);
 
-    return true;
-
   } catch (error) {
 
     console.error(
-      "Failed to load public Health ID:",
+      "❌ PUBLIC HEALTH ID FAILED:",
       error
     );
 
     showPublicHealthIdError(
-      "Unable to load this Health ID right now. Please try again."
+      error?.message ||
+      "Unable to load this Health ID."
     );
-
-    return true;
   }
 }
+
 const esc = v => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 const errMsg = e => e?.message || e?.error_description || String(e || "Unknown error");
 const initials = n => !n ? "U" : n.trim().split(/\s+/).map(x => x[0]).slice(0, 2).join("").toUpperCase();
